@@ -7,7 +7,7 @@ Prototipo de detección de posibles fraudes en siniestros de seguros para Asegur
 - Supabase (PostgreSQL)
 - Streamlit
 - Scikit-learn (Random Forest, Isolation Forest, TF-IDF, Cosine Similarity)
-- Gemini 1.5 Flash (Google Generative AI)
+- Gemini 2.5 Flash (Google Generative AI)
 
 ## Instalación
 

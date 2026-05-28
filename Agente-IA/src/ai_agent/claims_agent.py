@@ -15,7 +15,7 @@ class ClaimsAgent:
             genai.configure(api_key=api_key)
             
         self.df_siniestros = df_siniestros
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.model = genai.GenerativeModel("gemini-2.5-flash")
         self.system_context = self._build_system_context()
         self.chat = self.model.start_chat(history=[])
 
