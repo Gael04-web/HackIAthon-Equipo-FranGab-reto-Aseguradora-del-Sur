@@ -1,0 +1,20 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Variables de entorno (¡CRÍTICO NO SUBIR ESTO!)
+.env
+
+# Archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Datos locales generados
+data/synthetic/*.csv
+
+# Otros de Sistema / IDE
+.DS_Store
+.vscode/
+.idea/
