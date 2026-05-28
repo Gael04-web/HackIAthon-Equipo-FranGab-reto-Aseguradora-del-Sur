@@ -80,7 +80,8 @@ page = st.sidebar.radio("Navegación", [
     "Dashboard Principal", 
     "Detalle de Siniestro", 
     "Asistente IA (Gemini)", 
-    "Métricas del Modelo"
+    "Métricas del Modelo",
+    "✍️ Registrar Siniestro"
 ])
 
 # Funciones auxiliares UI
@@ -260,3 +261,170 @@ elif page == "Métricas del Modelo":
         cm = metrics.get('confusion_matrix', [[0,0],[0,0]])
         cm_df = pd.DataFrame(cm, index=['Real Normal', 'Real Fraude'], columns=['Pred Normal', 'Pred Fraude'])
         st.dataframe(cm_df, use_container_width=True)
+
+elif page == "✍️ Registrar Siniestro":
+    import uuid
+    from datetime import date, datetime
+    from src.rules.fraud_rules import calculate_rule_score
+
+    st.title("✍️ Registrar Nuevo Siniestro")
+    st.write("Ingresa los datos del siniestro. El sistema calculará el score de riesgo en tiempo real.")
+    st.markdown("---")
+
+    with st.form("form_siniestro", clear_on_submit=False):
+        st.subheader("📄 Datos Básicos del Siniestro")
+        c1, c2, c3 = st.columns(3)
+        ramo = c1.selectbox("Ramo", ["Vehiculos", "Salud", "Vida", "Hogar", "Generales"])
+        cobertura = c2.selectbox("Cobertura", ["Choque", "Robo", "Enfermedad", "Incendio", "RC"])
+        estado = c3.selectbox("Estado", ["Reportado", "En Analisis", "Aprobado", "Rechazado"])
+
+        c1b, c2b = st.columns(2)
+        fecha_ocurrencia = c1b.date_input("Fecha de Ocurrencia", value=date.today())
+        fecha_reporte    = c2b.date_input("Fecha de Reporte",    value=date.today())
+
+        st.subheader("💰 Montos")
+        c1c, c2c, c3c = st.columns(3)
+        monto_reclamado  = c1c.number_input("Monto Reclamado ($)", min_value=0.0, value=5000.0, step=100.0)
+        monto_estimado   = c2c.number_input("Monto Estimado ($)",  min_value=0.0, value=4500.0, step=100.0)
+        suma_asegurada   = c3c.number_input("Suma Asegurada de la Póliza ($)", min_value=1.0, value=20000.0, step=500.0)
+
+        st.subheader("👤 Datos del Asegurado y Proveedor")
+        c1d, c2d, c3d = st.columns(3)
+        historial        = c1d.number_input("Siniestros previos del asegurado", min_value=0, value=0, step=1)
+        docs_completos   = c2d.checkbox("Documentos completos", value=True)
+        lista_restrictiva= c3d.checkbox("Proveedor en lista restrictiva", value=False)
+
+        c1e, c2e = st.columns(2)
+        pct_obs          = c1e.slider("% casos observados del proveedor", 0.0, 1.0, 0.05, 0.01)
+        reclamos_prov    = c2e.number_input("Reclamos asociados al proveedor", min_value=0, value=5, step=1)
+
+        st.subheader("📅 Tiempos")
+        c1f, c2f, c3f = st.columns(3)
+        dias_desde_inicio = c1f.number_input("Días desde inicio de la póliza", min_value=0, value=90, step=1)
+        dias_desde_fin    = c2f.number_input("Días hasta fin de la póliza", min_value=0, value=275, step=1)
+        dias_reporte      = c3f.number_input("Días entre ocurrencia y reporte", min_value=0, value=1, step=1)
+
+        descripcion = st.text_area("📝 Descripción del siniestro", height=100,
+                                   placeholder="Describe brevemente cómo ocurrió el siniestro...")
+        beneficiario = st.text_input("👨‍👩‍👧 Beneficiario")
+
+        submitted = st.form_submit_button("📊 Calcular Score de Riesgo", use_container_width=True)
+
+    if submitted:
+        # Calcular similitud NLP con los siniestros existentes
+        nlp_score = 0.0
+        id_similar = "N/A"
+        if descripcion.strip() and 'descripcion' in df.columns:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            from sklearn.metrics.pairwise import cosine_similarity
+            import numpy as np
+            textos_existentes = df['descripcion'].fillna("").tolist()
+            todos = textos_existentes + [descripcion]
+            try:
+                vec = TfidfVectorizer(stop_words='english').fit_transform(todos)
+                sims = cosine_similarity(vec[-1], vec[:-1])[0]
+                nlp_score = float(sims.max())
+                idx_similar = int(sims.argmax())
+                id_similar = df['id_siniestro'].iloc[idx_similar][:8]
+            except Exception:
+                nlp_score = 0.0
+
+        # Armar el dict para el motor de reglas
+        siniestro_input = {
+            "dias_desde_inicio_poliza":          dias_desde_inicio,
+            "dias_desde_fin_poliza":             dias_desde_fin,
+            "dias_entre_ocurrencia_reporte":      dias_reporte,
+            "monto_reclamado":                   monto_reclamado,
+            "monto_estimado":                    monto_estimado,
+            "suma_asegurada":                    suma_asegurada,
+            "historial_siniestros_asegurado":    historial,
+            "documentos_completos":              docs_completos,
+            "en_lista_restrictiva":              lista_restrictiva,
+            "pct_casos_observados_proveedor":    pct_obs,
+            "reclamos_asociados_proveedor":      reclamos_prov,
+            "cobertura":                         cobertura,
+            "max_similarity_nlp":                nlp_score,
+            "id_siniestro_similar":              id_similar,
+        }
+
+        res_reglas = calculate_rule_score(siniestro_input)
+        score_reglas = res_reglas["score_reglas"]
+        alertas      = res_reglas["alertas"]
+
+        # Score final simplificado (sin RF/IF ya que es un caso nuevo)
+        # Usamos reglas (60%) + NLP (40%) como proxy para el registro nuevo
+        score_final = min(100, round((score_reglas * 0.60) + (nlp_score * 100 * 0.40), 1))
+
+        if score_final <= 40:
+            nivel = "Verde"
+        elif score_final <= 75:
+            nivel = "Amarillo"
+        else:
+            nivel = "Rojo"
+
+        # --- Resultado visual ---
+        st.markdown("---")
+        st.subheader("🏥 Resultado del Análisis")
+
+        rc1, rc2 = st.columns([2, 1])
+        with rc2:
+            st.metric("Score de Fraude", f"{score_final}/100")
+            if nivel == "Rojo":
+                st.error("🔴 NIVEL ROJO — ALTO RIESGO\nEscalar a Unidad Antifraude.")
+            elif nivel == "Amarillo":
+                st.warning("🟡 NIVEL AMARILLO — REVISIÓN NECESARIA\nEl analista debe revisar antes de autorizar.")
+            else:
+                st.success("🟢 NIVEL VERDE — RIESGO BAJO\nProceder por flujo estándar.")
+
+        with rc1:
+            st.subheader("Alertas detectadas")
+            if alertas:
+                for alerta in alertas:
+                    if "CRÍTICO" in alerta:
+                        st.error(alerta)
+                    elif "ALTO" in alerta:
+                        st.warning(alerta)
+                    else:
+                        st.info(alerta)
+            else:
+                st.success("✅ No se detectaron alertas en este siniestro.")
+
+            if nlp_score > 0.70:
+                st.warning(f"🔍 Descripción con {int(nlp_score*100)}% de similitud al siniestro `{id_similar}`.")
+
+        # --- Guardar en Supabase (si está configurado) ---
+        st.markdown("---")
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_KEY")
+        if url and key and "your_" not in key:
+            if st.button("💾 Guardar siniestro en Supabase"):
+                try:
+                    supabase: Client = create_client(url, key)
+                    nuevo_id = str(uuid.uuid4())
+                    nuevo_registro = {
+                        "id_siniestro":                       nuevo_id,
+                        "ramo":                               ramo,
+                        "cobertura":                          cobertura,
+                        "fecha_ocurrencia":                   fecha_ocurrencia.isoformat(),
+                        "fecha_reporte":                      fecha_reporte.isoformat(),
+                        "monto_reclamado":                    monto_reclamado,
+                        "monto_estimado":                     monto_estimado,
+                        "estado":                             estado,
+                        "descripcion":                        descripcion,
+                        "documentos_completos":               docs_completos,
+                        "beneficiario":                       beneficiario,
+                        "dias_desde_inicio_poliza":           dias_desde_inicio,
+                        "dias_desde_fin_poliza":              dias_desde_fin,
+                        "dias_entre_ocurrencia_reporte":      dias_reporte,
+                        "historial_siniestros_asegurado":     historial,
+                        "etiqueta_fraude_simulada":           0,
+                        "monto_pagado":                       0.0,
+                    }
+                    supabase.table("siniestros").insert(nuevo_registro).execute()
+                    st.success(f"✅ Siniestro guardado con ID: `{nuevo_id[:8]}...`")
+                    # Limpiar caché para que el dashboard se actualice
+                    st.cache_data.clear()
+                except Exception as e:
+                    st.error(f"Error al guardar en Supabase: {e}")
+        else:
+            st.info("ℹ️ Configura SUPABASE_URL y SUPABASE_KEY en el .env para guardar el siniestro en la base de datos.")
