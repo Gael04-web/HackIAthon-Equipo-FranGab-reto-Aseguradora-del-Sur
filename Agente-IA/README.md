@@ -1,4 +1,4 @@
-# Fraudia Claims
+# Agente IA
 
 Prototipo de detección de posibles fraudes en siniestros de seguros para Aseguradora del Sur. Desarrollado como parte de un Hackathon de 24 horas.
 
