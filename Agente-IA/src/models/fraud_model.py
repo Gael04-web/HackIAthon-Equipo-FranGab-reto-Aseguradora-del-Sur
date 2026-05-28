@@ -82,18 +82,31 @@ class FraudModelPipeline:
         y = self.df['etiqueta_fraude_simulada']
 
         # 2. Random Forest
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        try:
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        except ValueError:
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
         self.rf.fit(X_train, y_train)
         
         # Métricas RF
         y_pred = self.rf.predict(X_test)
-        y_prob = self.rf.predict_proba(X_test)[:, 1]
+        probas_test = self.rf.predict_proba(X_test)
+        if probas_test.shape[1] == 1:
+            y_prob = np.zeros(X_test.shape[0]) if self.rf.classes_[0] == 0 else np.ones(X_test.shape[0])
+        else:
+            y_prob = probas_test[:, 1]
         
+        try:
+            auc = roc_auc_score(y_test, y_prob)
+        except ValueError:
+            auc = 0.0 # Ocurre si hay solo 1 clase en el test set
+            
         self.metrics = {
-            'precision': precision_score(y_test, y_pred),
-            'recall': recall_score(y_test, y_pred),
-            'f1': f1_score(y_test, y_pred),
-            'auc_roc': roc_auc_score(y_test, y_prob),
+            'precision': precision_score(y_test, y_pred, zero_division=0),
+            'recall': recall_score(y_test, y_pred, zero_division=0),
+            'f1': f1_score(y_test, y_pred, zero_division=0),
+            'auc_roc': auc,
             'confusion_matrix': confusion_matrix(y_test, y_pred).tolist()
         }
         
@@ -112,7 +125,11 @@ class FraudModelPipeline:
         X = self.df[self.features]
         
         # Prob RF (0 a 1)
-        prob_rf = self.rf.predict_proba(X)[:, 1]
+        probas_all = self.rf.predict_proba(X)
+        if probas_all.shape[1] == 1:
+            prob_rf = np.zeros(X.shape[0]) if self.rf.classes_[0] == 0 else np.ones(X.shape[0])
+        else:
+            prob_rf = probas_all[:, 1]
         
         # Anomaly score normalizado 0-1 (decision_function da valores donde menor es más anómalo)
         iso_scores = self.iso.decision_function(X)
