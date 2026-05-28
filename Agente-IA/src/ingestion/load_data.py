@@ -91,56 +91,49 @@ def generate_data():
 
     # 4. Siniestros
     siniestros = []
-    for _ in range(N_SINIESTROS):
-        is_fraud = random.random() < 0.15
+    for i in range(N_SINIESTROS):
         poliza = random.choice(polizas)
-        
-        # Lógica de fechas
         fecha_inicio_pol = datetime.fromisoformat(poliza["fecha_inicio"]).date()
         fecha_fin_pol = datetime.fromisoformat(poliza["fecha_fin"]).date()
         
-        if is_fraud:
-            # Días desde inicio póliza <= 30
-            dias_desde_inicio = random.randint(1, 30)
-            fecha_ocurrencia = fecha_inicio_pol + timedelta(days=dias_desde_inicio)
-            # Días entre ocurrencia y reporte > 7
-            dias_reporte = random.randint(8, 30)
-        else:
-            dias_desde_inicio = random.randint(31, 300)
-            fecha_ocurrencia = fecha_inicio_pol + timedelta(days=dias_desde_inicio)
-            dias_reporte = random.randint(1, 5)
-            
-        fecha_reporte = fecha_ocurrencia + timedelta(days=dias_reporte)
-        dias_desde_fin = (fecha_fin_pol - fecha_ocurrencia).days
-        
-        # Proveedor
-        if is_fraud:
+        # Lógica de distribución forzada para la DEMO (3 Rojos, 2 Amarillos, 5 Verdes)
+        if i < 3: # ROJOS (Fraude descarado)
+            is_fraud = True
+            dias_desde_inicio = random.randint(1, 5)
+            dias_reporte = random.randint(10, 30)
+            historial = random.randint(4, 8)
+            docs_completos = False
+            monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.95, 0.99), 2)
             prov_malos = [p for p in proveedores if p["en_lista_restrictiva"] or p["pct_casos_observados"] > 0.3]
             proveedor = random.choice(prov_malos) if prov_malos else random.choice(proveedores)
-        else:
+            descripcion = random.choice(narrativas_fraude)
+            
+        elif i < 5: # AMARILLOS (Riesgo medio/sospechoso)
+            is_fraud = False
+            dias_desde_inicio = random.randint(10, 40)
+            dias_reporte = random.randint(5, 10)
+            historial = random.randint(2, 3)
+            docs_completos = True
+            monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.70, 0.85), 2)
+            proveedor = random.choice(proveedores)
+            descripcion = fake.text(max_nb_chars=100)
+            
+        else: # VERDES (Totalmente normales)
+            is_fraud = False
+            dias_desde_inicio = random.randint(100, 300)
+            dias_reporte = random.randint(1, 3)
+            historial = random.randint(0, 1)
+            docs_completos = True
+            monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.10, 0.40), 2)
             prov_buenos = [p for p in proveedores if not p["en_lista_restrictiva"]]
             proveedor = random.choice(prov_buenos) if prov_buenos else random.choice(proveedores)
+            descripcion = fake.text(max_nb_chars=150)
 
-        # Montos
-        if is_fraud:
-            monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.91, 0.99), 2)
-        else:
-            monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.1, 0.6), 2)
-            
+        fecha_ocurrencia = fecha_inicio_pol + timedelta(days=dias_desde_inicio)
+        fecha_reporte = fecha_ocurrencia + timedelta(days=dias_reporte)
+        dias_desde_fin = (fecha_fin_pol - fecha_ocurrencia).days
         monto_estimado = monto_reclamado * round(random.uniform(0.8, 1.0), 2)
         monto_pagado = 0.0 # asumimos pendiente
-        
-        # Historial asegurado
-        historial = random.randint(3, 8) if is_fraud else random.randint(0, 2)
-        
-        # Documentos completos
-        docs_completos = False if is_fraud else (random.random() < 0.9)
-        
-        # Descripción
-        if is_fraud and random.random() < 0.6:
-            descripcion = random.choice(narrativas_fraude)
-        else:
-            descripcion = fake.text(max_nb_chars=150)
 
         siniestros.append({
             "id_siniestro": str(uuid.uuid4()),
