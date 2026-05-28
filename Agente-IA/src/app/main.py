@@ -74,7 +74,7 @@ if raw_df.empty:
 df, model = get_processed_data_and_model(raw_df)
 
 # --- SIDEBAR NAV ---
-st.sidebar.image("https://via.placeholder.com/300x100.png?text=Aseguradora+del+Sur", use_column_width=True)
+st.sidebar.image("https://via.placeholder.com/300x100.png?text=Aseguradora+del+Sur", use_container_width=True)
 st.sidebar.title("Fraudia Claims")
 page = st.sidebar.radio("Navegación", [
     "Dashboard Principal", 
