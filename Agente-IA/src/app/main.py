@@ -142,9 +142,9 @@ if page == "Dashboard Principal":
     
     # Mostrar tabla con estilo de Pandas Styler
     def highlight_riesgo(s):
-        if s.nivel_riesgo == 'Rojo': return ['background-color: #ffcccc']*len(s)
-        elif s.nivel_riesgo == 'Amarillo': return ['background-color: #fff3cd']*len(s)
-        return ['background-color: #d4edda']*len(s)
+        if s.nivel_riesgo == 'Rojo': return ['background-color: #ffcccc; color: black']*len(s)
+        elif s.nivel_riesgo == 'Amarillo': return ['background-color: #fff3cd; color: black']*len(s)
+        return ['background-color: #d4edda; color: black']*len(s)
 
     st.dataframe(view_df.style.apply(highlight_riesgo, axis=1), use_container_width=True, hide_index=True)
 
@@ -352,8 +352,9 @@ elif page == "✍️ Registrar Siniestro":
         alertas      = res_reglas["alertas"]
 
         # Score final simplificado (sin RF/IF ya que es un caso nuevo)
-        # Usamos reglas (60%) + NLP (40%) como proxy para el registro nuevo
-        score_final = min(100, round((score_reglas * 0.60) + (nlp_score * 100 * 0.40), 1))
+        # Escalar el score de reglas (max ~40) a 100 multiplicando por 2.5
+        score_reglas_escalado = min(100.0, score_reglas * 2.5)
+        score_final = min(100, round((score_reglas_escalado * 0.60) + (nlp_score * 100 * 0.40), 1))
 
         if score_final <= 40:
             nivel = "Verde"

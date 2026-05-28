@@ -144,9 +144,11 @@ class FraudModelPipeline:
         self.df['anomaly_score'] = anomaly_score_norm
         
         # Calcular Score Final
-        # Score final = (score_reglas * 0.40) + (prob_rf * 100 * 0.35) + (anomaly_score * 100 * 0.15) + (nlp_score * 100 * 0.10)
+        # Score final = (score_reglas_escalado * 0.40) + (prob_rf * 100 * 0.35) + (anomaly_score * 100 * 0.15) + (nlp_score * 100 * 0.10)
+        score_reglas_escalado = (self.df['score_reglas'] * 2.5).clip(upper=100)
+        
         score_final = (
-            (self.df['score_reglas'].clip(upper=100) * 0.40) + 
+            (score_reglas_escalado * 0.40) + 
             (prob_rf * 100 * 0.35) + 
             (anomaly_score_norm * 100 * 0.15) + 
             (self.df['max_similarity_nlp'] * 100 * 0.10)
