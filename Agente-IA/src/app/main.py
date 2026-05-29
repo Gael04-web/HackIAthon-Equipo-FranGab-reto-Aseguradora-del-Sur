@@ -184,10 +184,57 @@ elif page == "Detalle de Siniestro":
         st.markdown("---")
         st.subheader("Análisis de IA y Explicabilidad")
         
-        dict_row = row.to_dict()
-        explicacion = explain_score(dict_row)
+        # Generar las alertas desde el motor de reglas
+        from src.rules.fraud_rules import calculate_rule_score
+        res = calculate_rule_score(row.to_dict())
+        alertas = res["alertas"]
         
-        st.info(explicacion)
+        # Añadir explicabilidad del ML
+        similitud = row.get("max_similarity_nlp", 0)
+        id_sim = row.get("id_siniestro_similar", "N/A")
+        if similitud > 0.85:
+            alertas.append(f"[ALTO] La descripción presenta alta similitud ({int(similitud*100)}%) con el siniestro {id_sim} (+8 pts).")
+            
+        prob_rf = row.get("prob_rf", 0)
+        if prob_rf > 0.6:
+            alertas.append(f"[ALTO] El modelo predictivo indica alta probabilidad ({int(prob_rf*100)}%) basada en patrones históricos.")
+            
+        anomaly = row.get("anomaly_score", 0)
+        if anomaly > 0.7:
+            alertas.append("[MEDIO] Anomalía detectada en los datos en comparación al comportamiento habitual del portafolio.")
+
+        if len(alertas) == 0:
+            alertas.append("No se detectaron alertas significativas de negocio ni anomalías estadísticas.")
+
+        st.info(
+            f"El siniestro {selected_id[:8]} fue clasificado como **{row['nivel_riesgo'].upper()}** "
+            f"(score: {row['score_final']}/100) por los siguientes factores:\n\n" +
+            "\n".join([f"- {a}" for a in alertas]) +
+            "\n\n*Recomendación: " + 
+            ("Escalar inmediatamente a la Unidad Antifraude para revisión especializada de campo." if row['nivel_riesgo'] == 'Rojo' 
+             else "Revisión documental manual requerida antes de pago." if row['nivel_riesgo'] == 'Amarillo' 
+             else "Proceder con flujo de pago rápido (Fast-Track).*")
+        )
+
+        # Botón para pedirle a Gemini una redacción detallada sin alucinar
+        st.markdown("---")
+        if st.button("✨ Generar Conclusión Ejecutiva con Gemini IA"):
+            with st.spinner("Redactando conclusión profesional..."):
+                if "agent" not in st.session_state:
+                    st.session_state.agent = ClaimsAgent(df)
+                
+                agent = st.session_state.agent
+                # Extraer solo los campos relevantes para pasarlos a la IA
+                datos_clave = {
+                    "ramo": row.get("ramo"),
+                    "monto_reclamado": row.get("monto_reclamado"),
+                    "cobertura": row.get("cobertura"),
+                    "score_final": row.get("score_final"),
+                    "descripcion": row.get("descripcion")
+                }
+                conclusion = agent.analyze_single_claim(datos_clave, alertas)
+                st.success("### Conclusión Generada por IA")
+                st.write(conclusion)
 
 elif page == "Asistente IA (Gemini)":
     st.title("🤖 Asistente Antifraude Gemini")
