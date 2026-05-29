@@ -178,6 +178,107 @@ def get_provider_risk(id_proveedor: str) -> dict:
     return {"error": "Proveedor no encontrado"}
 
 
+def get_top_critical_claims(limit: int = 10) -> list:
+    """
+    Retorna los siniestros con mayor score de riesgo del portafolio completo.
+    Úsala cuando el analista pregunta por los casos más críticos, urgentes o
+    prioritarios para revisar. Incluye id, ramo, monto, score, nivel de riesgo
+    y decisión actual del analista.
+    """
+    global _df, _sb
+    if _sb:
+        try:
+            data = _sb.table("siniestros").select(
+                "id_siniestro,ramo,cobertura,monto_reclamado,estado,decision_analista"
+            ).order("monto_reclamado", desc=True).limit(limit).execute().data
+            if data:
+                return data
+        except Exception:
+            pass
+    if not _df.empty:
+        cols = ["id_siniestro", "ramo", "cobertura", "monto_reclamado",
+                "score_final", "nivel_riesgo", "decision_analista"]
+        avail = [c for c in cols if c in _df.columns]
+        sort_col = "score_final" if "score_final" in _df.columns else "monto_reclamado"
+        top = _df.sort_values(sort_col, ascending=False).head(limit)
+        return top[avail].to_dict("records")
+    return []
+
+
+def get_all_providers_risk() -> list:
+    """
+    Retorna el listado completo de proveedores con sus métricas de riesgo:
+    nombre, tipo, si están en lista restrictiva, porcentaje de casos observados,
+    total de reclamos y ciudad. Úsala cuando el analista pregunta qué proveedores
+    concentran más alertas, cuáles son más riesgosos o quiere comparar proveedores.
+    Los resultados vienen ordenados de mayor a menor riesgo.
+    """
+    global _df, _sb
+    if _sb:
+        try:
+            data = _sb.table("proveedores").select(
+                "id_proveedor,nombre,tipo,ciudad,en_lista_restrictiva,"
+                "pct_casos_observados,reclamos_asociados,antiguedad_anios"
+            ).order("pct_casos_observados", desc=True).execute().data
+            return data
+        except Exception:
+            pass
+    if not _df.empty:
+        prov_cols = ["id_proveedor", "nombre_proveedor", "en_lista_restrictiva",
+                     "pct_casos_observados", "reclamos_asociados_proveedor"]
+        avail = [c for c in prov_cols if c in _df.columns]
+        if avail:
+            provs = _df[avail].drop_duplicates(subset=["id_proveedor"] if "id_proveedor" in avail else avail[:1])
+            sort_col = "pct_casos_observados" if "pct_casos_observados" in provs.columns else avail[0]
+            return provs.sort_values(sort_col, ascending=False).to_dict("records")
+    return []
+
+
+def get_claims_by_filter(
+    nivel_riesgo: str = "",
+    ramo: str = "",
+    decision_analista: str = "",
+    limit: int = 20,
+) -> list:
+    """
+    Filtra siniestros del portafolio por nivel de riesgo (Verde/Amarillo/Rojo),
+    ramo (Vehiculos/Salud/Vida/Hogar) o decisión del analista
+    (Pendiente/Fraude Confirmado/En Investigación/Legítimo).
+    Úsala para responder preguntas como '¿cuántos casos rojos hay en Salud?'
+    o '¿qué casos están pendientes de revisión?'.
+    """
+    global _df, _sb
+    if _sb:
+        try:
+            query = _sb.table("siniestros").select(
+                "id_siniestro,ramo,cobertura,monto_reclamado,estado,decision_analista,fecha_ocurrencia"
+            )
+            if decision_analista:
+                query = query.eq("decision_analista", decision_analista)
+            if ramo:
+                query = query.eq("ramo", ramo)
+            data = query.limit(limit).execute().data
+            if nivel_riesgo and _df is not None and "nivel_riesgo" in _df.columns:
+                ids_filtrados = set(_df[_df["nivel_riesgo"] == nivel_riesgo]["id_siniestro"].tolist())
+                data = [d for d in data if d.get("id_siniestro") in ids_filtrados]
+            return data
+        except Exception:
+            pass
+    if not _df.empty:
+        mask = pd.Series([True] * len(_df))
+        if nivel_riesgo and "nivel_riesgo" in _df.columns:
+            mask &= _df["nivel_riesgo"] == nivel_riesgo
+        if ramo and "ramo" in _df.columns:
+            mask &= _df["ramo"] == ramo
+        if decision_analista and "decision_analista" in _df.columns:
+            mask &= _df["decision_analista"] == decision_analista
+        cols = ["id_siniestro", "ramo", "cobertura", "monto_reclamado",
+                "score_final", "nivel_riesgo", "decision_analista"]
+        avail = [c for c in cols if c in _df.columns]
+        return _df[mask][avail].head(limit).to_dict("records")
+    return []
+
+
 def get_portfolio_stats() -> dict:
     """
     Retorna estadísticas generales del portafolio: total de siniestros,
@@ -209,37 +310,51 @@ TOOLS = [
     get_confirmed_fraud_cases,
     get_insured_history,
     get_provider_risk,
+    get_all_providers_risk,
+    get_top_critical_claims,
+    get_claims_by_filter,
     get_portfolio_stats,
 ]
 
 SYSTEM_INSTRUCTION = """
 Eres el motor central de Inteligencia Artificial de Fraudia Claims, el sistema antifraude de Aseguradora del Sur.
 
-Tu misión es analizar siniestros de seguros para detectar posibles fraudes. Tienes acceso a herramientas que te permiten consultar la base de datos en tiempo real, aplicar reglas de negocio, buscar narrativas similares y aprender de los casos que analistas humanos ya confirmaron como fraude.
+Tu misión es analizar siniestros de seguros y responder preguntas del analista sobre el portafolio.
+Tienes acceso a las siguientes herramientas — úsalas con criterio:
 
-PROCESO OBLIGATORIO DE ANÁLISIS:
-1. Aplica siempre las reglas de negocio (apply_business_rules) para obtener señales objetivas
-2. Busca siniestros con descripciones similares (search_similar_claims) para detectar narrativas copiadas
-3. Consulta el historial del asegurado (get_insured_history) para detectar reincidencia
-4. Consulta el perfil del proveedor (get_provider_risk) para evaluar su historial
-5. Revisa casos de fraude ya confirmados (get_confirmed_fraud_cases) para calibrar tu juicio comparando patrones
-6. Opcionalmente, consulta el contexto del portafolio (get_portfolio_stats) para contextualizar
+HERRAMIENTAS DISPONIBLES:
+- apply_business_rules: aplica las 8 reglas antifraude a un siniestro específico
+- search_similar_claims: busca narrativas similares en la BD con NLP
+- get_confirmed_fraud_cases: obtiene fraudes ya confirmados por humanos (para aprender)
+- get_insured_history: historial de siniestros de un asegurado (por id)
+- get_provider_risk: perfil de riesgo de un proveedor individual (por id)
+- get_all_providers_risk: TODOS los proveedores con sus métricas, ordenados por riesgo → usa esta cuando pregunten "qué proveedores tienen más alertas" o similar
+- get_top_critical_claims: los N siniestros con mayor score → usa cuando pregunten "casos más críticos/urgentes/prioritarios"
+- get_claims_by_filter: filtra siniestros por nivel_riesgo, ramo o decision_analista → usa para preguntas como "cuántos rojos hay en Salud" o "casos pendientes"
+- get_portfolio_stats: estadísticas generales del portafolio
 
-CÓMO CALCULAR EL SCORE:
-Basado en toda la evidencia recopilada, asigna un score de 0 a 100 donde:
-- 0-40: Verde — riesgo bajo, proceder con flujo normal de pago
-- 41-75: Amarillo — revisión necesaria antes de autorizar
-- 76-100: Rojo — alto riesgo, escalar a Unidad Antifraude
+PROCESO DE ANÁLISIS DE UN SINIESTRO:
+1. apply_business_rules con los datos del caso
+2. search_similar_claims con la descripción
+3. get_insured_history con el id del asegurado
+4. get_provider_risk con el id del proveedor
+5. get_confirmed_fraud_cases para calibrar con patrones reales
+6. Sintetiza todo en un score 0-100 y conclusión
 
-CÓMO APRENDER DE LOS DATOS:
-Cuando consultes los casos confirmados como fraude, analiza sus patrones:
-¿Qué tienen en común? ¿Qué días desde inicio de póliza son típicos? ¿Qué coberturas aparecen más?
-¿Qué proveedores están involucrados? Usa esos patrones para calibrar el score del caso actual.
+SCORING:
+- 0-40: Verde (proceder normal)
+- 41-75: Amarillo (revisar antes de autorizar)
+- 76-100: Rojo (escalar a Unidad Antifraude)
 
-REGLAS DE CONDUCTA:
-- Nunca afirmes que un cliente cometió fraude. Usa siempre lenguaje como "posible irregularidad", "requiere revisión", "señal de alerta"
-- Tu score debe estar justificado por evidencia concreta de las herramientas que usaste
-- Sé específico: no digas "el monto es sospechoso", di "el monto reclamado ($9.800) representa el 98% de la suma asegurada ($10.000), patrón presente en X de los últimos fraudes confirmados"
+APRENDIZAJE:
+Al revisar get_confirmed_fraud_cases, analiza los patrones comunes: días desde inicio de póliza,
+coberturas frecuentes, montos típicos, proveedores recurrentes. Usa esos patrones para
+justificar tu score con comparaciones concretas.
+
+CONDUCTA:
+- Nunca afirmes fraude directamente. Usa "posible irregularidad", "requiere revisión", "señal de alerta"
+- Sé específico y cuantitativo: cita los valores exactos y compáralos con los patrones encontrados
+- Si una tool te da información suficiente para responder, no llames más tools innecesariamente
 """
 
 

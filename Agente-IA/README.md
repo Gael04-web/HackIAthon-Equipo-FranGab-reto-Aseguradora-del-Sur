@@ -1,20 +1,32 @@
 # Fraudia Claims — Detección de Fraude en Siniestros
 
-Proyecto desarrollado para el HackIAthon de Aseguradora del Sur. La idea nació de un problema real: los analistas de siniestros reciben decenas de casos al día y es imposible revisar cada uno con el mismo nivel de atención. Fraudia Claims le da a cada analista un segundo par de ojos — uno que nunca se cansa y que aprendió de miles de patrones de fraude.
+Proyecto desarrollado para el HackIAthon de Aseguradora del Sur. La idea nació de un problema real: los analistas de siniestros reciben decenas de casos al día y es imposible revisar cada uno con el mismo nivel de atención. Fraudia Claims le da a cada analista un segundo par de ojos — uno que nunca se cansa, que consulta la base de datos en tiempo real y que aprende de cada fraude que el equipo confirma.
 
-La app combina reglas de negocio del sector asegurador, machine learning y un agente conversacional con Gemini 2.5 Flash para clasificar siniestros por nivel de riesgo (Verde, Amarillo, Rojo) y ayudar al analista a tomar decisiones más rápido y con más información.
+La app combina un pipeline de machine learning para clasificar el portafolio completo con un agente de IA (Gemini 2.5 Flash) que analiza casos individuales en profundidad, tiene acceso directo a Supabase y se vuelve más preciso conforme los analistas van tomando decisiones.
 
 ---
 
 ## Lo que hace
 
-- Analiza cada siniestro con 8 reglas de negocio antifraude (borde de vigencia, demora en denuncia, proveedores en lista negra, monto atípico, etc.)
+**Pipeline ML (scoring del portafolio):**
+- Aplica 8 reglas de negocio antifraude codificadas por expertos del sector
 - Detecta descripciones de siniestros sospechosamente parecidas entre sí usando NLP (TF-IDF)
-- Entrena un Random Forest e Isolation Forest con los datos históricos para predecir fraude
-- Combina todo en un score de 0 a 100 con nivel de riesgo visual
-- Permite chatear con un agente de IA (Gemini) que conoce todo el portafolio
-- Genera reportes en PDF con la conclusión del análisis
-- Guarda la decisión final del analista (Fraude / Investigación / Legítimo) en Supabase
+- Entrena un Random Forest e Isolation Forest con los datos históricos
+- Combina todo en un score ML de 0 a 100 para los 500 siniestros del portafolio
+
+**Agente Gemini (análisis profundo por demanda):**
+- Consulta Supabase en tiempo real: historial del asegurado, perfil del proveedor, casos similares
+- Lee los fraudes ya confirmados por analistas humanos y aprende de sus patrones
+- Decide autónomamente qué información necesita (9 herramientas disponibles)
+- Produce su propio score independiente con justificación detallada
+- Responde preguntas libres sobre el portafolio en el chat del Inspector FRAUDIA
+
+**Flujo del analista:**
+- Dashboard con KPIs, gráficos y tabla filtrable del portafolio completo
+- Detalle de cada siniestro con Score ML + Score Gemini para comparar
+- Descarga de reporte en PDF con la conclusión del agente
+- Registro de decisión (Fraude / Investigación / Legítimo) que se guarda en Supabase y retroalimenta al agente
+- Formulario para registrar siniestros nuevos con análisis en tiempo real
 
 ---
 
@@ -51,65 +63,49 @@ pip install -r requirements.txt
 
 ### 3. Configurar variables de entorno
 
-Copia el archivo de ejemplo y edítalo con tus credenciales:
+Copia el archivo de ejemplo y completa tus credenciales:
 
 ```bash
 cp .env.example .env
 ```
 
-Abre `.env` y completa los tres valores:
-
 ```
 SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_KEY=eyJhbGci...  ← la clave "anon public" de tu proyecto
+SUPABASE_KEY=eyJhbGci...        ← clave "anon public" de tu proyecto
 GEMINI_API_KEY=AIzaSy...
 ```
 
-**¿Dónde encuentro las credenciales de Supabase?**
-Entra a tu proyecto → *Project Settings* → *API* → copia *Project URL* y *anon public key*.
+**¿Dónde están las credenciales de Supabase?**
+Proyecto → *Project Settings* → *API* → copia *Project URL* y *anon public key*.
 
 **¿Y la de Gemini?**
-Entra a [aistudio.google.com](https://aistudio.google.com), ve a *Get API Key* y crea una.
+Entra a [aistudio.google.com](https://aistudio.google.com) → *Get API Key* → crea una nueva.
 
 ---
 
 ## Configurar la base de datos
 
-Entra al **SQL Editor** de tu proyecto en Supabase, pega el contenido de `docs/schema.sql` y ejecútalo. Eso crea las 5 tablas: `asegurados`, `polizas`, `proveedores`, `siniestros` y `documentos`.
+En el **SQL Editor** de tu proyecto Supabase, ejecuta el contenido de `docs/schema.sql`. Eso crea las 5 tablas: `asegurados`, `polizas`, `proveedores`, `siniestros` y `documentos`.
 
-Si ya tenías una versión anterior y quieres empezar desde cero:
+Si ya tenías datos de una versión anterior y quieres empezar limpio:
 
 ```sql
 DROP TABLE IF EXISTS documentos, siniestros, polizas, proveedores, asegurados CASCADE;
 ```
 
-Y luego vuelve a ejecutar el schema.
+Luego vuelve a ejecutar el schema.
 
 ---
 
 ## Cargar los datos de ejemplo
 
-El proyecto incluye un generador de datos sintéticos que crea 500 siniestros con distribución realista (15% fraude, 20% sospechoso, 65% normal):
+El generador crea 500 siniestros con distribución realista (15% fraude, 20% sospechoso, 65% normal) y 1.000 documentos asociados:
 
 ```bash
 python src/ingestion/load_data.py
 ```
 
-Vas a ver algo así en la consola:
-
-```
-Generando datos sintéticos...
-Siniestros guardados localmente en data/synthetic/siniestros.csv
-Conectado a Supabase. Subiendo datos...
-Insertando 200 registros en asegurados...
-Insertando 300 registros en polizas...
-Insertando 50 registros en proveedores...
-Insertando 500 registros en siniestros...
-Insertando 1000 registros en documentos...
-Carga a Supabase completada con éxito.
-```
-
-Si las credenciales de Supabase no están configuradas, igual genera un CSV local en `data/synthetic/siniestros.csv` que la app puede usar como fallback.
+Si las credenciales de Supabase no están configuradas, genera igual un CSV local en `data/synthetic/siniestros.csv` que la app usa como fallback.
 
 ---
 
@@ -119,49 +115,56 @@ Si las credenciales de Supabase no están configuradas, igual genera un CSV loca
 streamlit run src/app/main.py
 ```
 
-Se abre automáticamente en `http://localhost:8501`.
+Se abre en `http://localhost:8501`. La primera carga tarda 5-15 segundos porque entrena los modelos ML.
 
 ---
 
 ## Demo — cómo usar la app
 
-### Primera vez que carga
-
-Al abrir la app por primera vez descarga los datos de Supabase y entrena los modelos. Esto tarda entre 5 y 15 segundos dependiendo del hardware. Después queda en caché y la navegación es instantánea.
-
 ### Dashboard Principal
 
-Aquí está el resumen de todo el portafolio. Arriba aparecen los KPIs clave: cuántos siniestros hay en total, qué porcentaje está en nivel Rojo o Amarillo, y cuánto dinero está "en riesgo". Más abajo hay dos gráficos (distribución de riesgo y reclamos por ramo) y una tabla donde puedes filtrar por nivel de riesgo, ramo y rango de score.
-
-Para una demo rápida: filtra solo los niveles Rojo y Amarillo para ver los casos que el sistema considera prioritarios.
+Muestra el resumen del portafolio completo: KPIs de riesgo, estado de las revisiones del analista y tabla filtrable por nivel de riesgo, ramo y score. Para una demo rápida, filtra solo Rojo y Amarillo para ver los casos que el sistema considera prioritarios.
 
 ### Detalle de Siniestro
 
-Selecciona cualquier siniestro del dropdown (aparecen ordenados de mayor a menor score de fraude). Verás los datos básicos, el score calculado y el nivel de riesgo con color.
+Selecciona cualquier siniestro del dropdown (ordenados de mayor a menor score ML). Verás los datos del caso y el score calculado por el pipeline.
 
-Haz click en **"✨ Realizar Análisis Total con Inteligencia Artificial"** y Gemini va a leer todos los datos del siniestro y generar un reporte con los factores de riesgo detectados y una conclusión ejecutiva. Desde ahí puedes descargar el reporte en PDF.
+Haz click en **"Análisis Profundo con Agente IA"** para activar el agente. Gemini va a:
+1. Aplicar las reglas de negocio al caso
+2. Buscar narrativas similares en la base de datos
+3. Consultar el historial del asegurado en Supabase
+4. Revisar el perfil del proveedor
+5. Leer los fraudes ya confirmados por el equipo para comparar patrones
+6. Producir su propio score con factores y conclusión ejecutiva
 
-Abajo aparecen los tres botones de decisión. Cuando el analista confirma una decisión, se guarda en Supabase y queda registrado en el dashboard.
+La UI muestra los dos scores lado a lado para que el analista pueda comparar. Si divergen mucho, significa que el agente encontró algo en la BD que el modelo estadístico no ponderó igual.
 
-### Inspector FRAUDIA (Asistente)
+Desde ahí puedes descargar el reporte en PDF y registrar la decisión final (Fraude / Investigación / Legítimo). Esa decisión se guarda en Supabase y automáticamente enriquece el conocimiento del agente para futuros análisis.
 
-Es un chat con Gemini que conoce el estado completo del portafolio. Puedes preguntarle cosas como:
+### Inspector FRAUDIA (chat)
 
-- *"¿Cuáles son los 10 casos más urgentes para revisar hoy?"*
-- *"¿Hay algún proveedor que aparezca en varios siniestros rojos?"*
-- *"Dame un resumen ejecutivo para presentar a gerencia"*
+El mismo agente responde preguntas libres sobre el portafolio. Tiene acceso a todas las herramientas, así que puede responder cosas como:
 
-También hay cuatro botones de preguntas sugeridas para empezar rápido.
+- *"¿Qué proveedores concentran más alertas?"* → consulta todos los proveedores ordenados por riesgo
+- *"¿Cuáles son los 10 casos más urgentes para revisar hoy?"* → trae los de mayor score
+- *"¿Cuántos siniestros rojos hay en Vehículos?"* → filtra el portafolio
+- *"Dame un resumen ejecutivo de los fraudes confirmados este mes"*
+
+Los cuatro botones de sugerencias son un buen punto de partida para una demo.
 
 ### Métricas del Modelo
 
-Muestra el rendimiento del Random Forest: precisión, recall, F1 y AUC-ROC. También hay un gráfico de importancia de features que te dice en qué señales se apoya más el modelo para clasificar un siniestro.
-
-Con los 500 siniestros de ejemplo deberías ver métricas alrededor de 85-95% dependiendo de la aleatoriedad de la generación.
+Muestra el rendimiento del Random Forest: precisión, recall, F1 y AUC-ROC, junto con la importancia de cada feature. Con los 500 siniestros de ejemplo deberías ver métricas entre 85-95%.
 
 ### Registrar Siniestro
 
-Formulario para ingresar un siniestro nuevo en tiempo real (útil para demostrar el sistema a alguien que trae un caso de prueba). Completa los campos, haz click en "Calcular Score de Riesgo" y el sistema aplica las reglas + Gemini al instante. Si quieres guardarlo en la base de datos, aparece el botón para hacerlo.
+Formulario para ingresar un siniestro nuevo y ver el análisis en tiempo real. Útil para demostrar el sistema con un caso inventado en el momento. El agente calcula el score y Gemini genera la conclusión.
+
+---
+
+## Cómo aprende el agente
+
+No es fine-tuning. El agente aprende por recuperación: cada vez que analiza un caso, consulta los siniestros que el equipo ya confirmó como fraude en Supabase y compara patrones. A medida que el equipo toma más decisiones, el agente tiene más ejemplos reales para calibrar su juicio. No hace falta reentrenar nada.
 
 ---
 
@@ -173,16 +176,16 @@ Agente-IA/
 │   ├── app/            → Aplicación Streamlit (main.py)
 │   ├── ingestion/      → Generador de datos sintéticos
 │   ├── models/         → Pipeline ML (Random Forest, Isolation Forest, NLP)
-│   ├── rules/          → Motor de reglas de negocio (RF-01 a RF-08)
-│   ├── ai_agent/       → Agente conversacional con Gemini
-│   └── explainability/ → Generador de explicaciones legibles
+│   ├── rules/          → Motor de reglas antifraude (RF-01 a RF-08)
+│   ├── ai_agent/       → Agente Gemini con 9 tools y loop agéntico
+│   └── explainability/ → Explicaciones legibles del score ML
 ├── data/
 │   └── synthetic/      → CSV local de siniestros (fallback sin Supabase)
 ├── docs/
 │   ├── schema.sql      → Script SQL para crear las tablas en Supabase
 │   ├── arquitectura.md → Diagrama y descripción del sistema
 │   ├── modelo_datos.md → Esquema detallado de tablas y campos
-│   ├── uso_ia.md       → Cómo funciona cada componente de IA
+│   ├── uso_ia.md       → Documentación completa de IA y tools del agente
 │   └── reglas_negocio.md → Catálogo de las 8 reglas antifraude
 ├── tests/
 │   └── test_rules.py   → Tests unitarios del motor de reglas
@@ -198,9 +201,9 @@ Agente-IA/
 | Componente | Tecnología |
 |-----------|-----------|
 | Frontend | Streamlit + Plotly |
+| Pipeline ML | scikit-learn — Random Forest, Isolation Forest, TF-IDF |
+| Agente IA | Google Gemini 2.5 Flash con function calling (9 tools) |
 | Base de datos | Supabase (PostgreSQL) |
-| Machine Learning | scikit-learn — Random Forest, Isolation Forest, TF-IDF |
-| IA Generativa | Google Gemini 2.5 Flash |
 | Generación de reportes | fpdf2 |
 | Datos sintéticos | Faker (locale español) |
 
