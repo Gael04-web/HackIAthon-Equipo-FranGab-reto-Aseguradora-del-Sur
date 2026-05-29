@@ -182,49 +182,48 @@ elif page == "Detalle de Siniestro":
                 st.success("NIVEL VERDE - RIESGO BAJO")
                 
         st.markdown("---")
-        st.subheader("Análisis de IA y Explicabilidad")
-        
-        # Generar las alertas desde el motor de reglas
-        from src.rules.fraud_rules import calculate_rule_score
-        res = calculate_rule_score(row.to_dict())
-        alertas = res["alertas"]
-        
-        # Añadir explicabilidad del ML
-        similitud = row.get("max_similarity_nlp", 0)
-        id_sim = row.get("id_siniestro_similar", "N/A")
-        if similitud > 0.85:
-            alertas.append(f"[ALTO] La descripción presenta alta similitud ({int(similitud*100)}%) con el siniestro {id_sim} (+8 pts).")
-            
-        prob_rf = row.get("prob_rf", 0)
-        if prob_rf > 0.6:
-            alertas.append(f"[ALTO] El modelo predictivo indica alta probabilidad ({int(prob_rf*100)}%) basada en patrones históricos.")
-            
-        anomaly = row.get("anomaly_score", 0)
-        if anomaly > 0.7:
-            alertas.append("[MEDIO] Anomalía detectada en los datos en comparación al comportamiento habitual del portafolio.")
-
-        if len(alertas) == 0:
-            alertas.append("No se detectaron alertas significativas de negocio ni anomalías estadísticas.")
-
-        st.info(
-            f"El siniestro {selected_id[:8]} fue clasificado como **{row['nivel_riesgo'].upper()}** "
-            f"(score: {row['score_final']}/100) por los siguientes factores:\n\n" +
-            "\n".join([f"- {a}" for a in alertas]) +
-            "\n\n*Recomendación: " + 
-            ("Escalar inmediatamente a la Unidad Antifraude para revisión especializada de campo." if row['nivel_riesgo'] == 'Rojo' 
-             else "Revisión documental manual requerida antes de pago." if row['nivel_riesgo'] == 'Amarillo' 
-             else "Proceder con flujo de pago rápido (Fast-Track).*")
-        )
-
-        # Botón para pedirle a Gemini una redacción detallada sin alucinar
         st.markdown("---")
-        if st.button("✨ Generar Conclusión Ejecutiva con Gemini IA"):
-            with st.spinner("Redactando conclusión profesional..."):
+        
+        if st.button("✨ Realizar Análisis de IA y Explicabilidad"):
+            with st.spinner("Inicializando motores de IA y procesando datos..."):
+                # Generar las alertas desde el motor de reglas
+                from src.rules.fraud_rules import calculate_rule_score
+                res = calculate_rule_score(row.to_dict())
+                alertas = res["alertas"]
+                
+                # Añadir explicabilidad del ML
+                similitud = row.get("max_similarity_nlp", 0)
+                id_sim = row.get("id_siniestro_similar", "N/A")
+                if similitud > 0.85:
+                    alertas.append(f"[ALTO] La descripción presenta alta similitud ({int(similitud*100)}%) con el siniestro {id_sim} (+8 pts).")
+                    
+                prob_rf = row.get("prob_rf", 0)
+                if prob_rf > 0.6:
+                    alertas.append(f"[ALTO] El modelo predictivo indica alta probabilidad ({int(prob_rf*100)}%) basada en patrones históricos.")
+                    
+                anomaly = row.get("anomaly_score", 0)
+                if anomaly > 0.7:
+                    alertas.append("[MEDIO] Anomalía detectada en los datos en comparación al comportamiento habitual del portafolio.")
+
+                if len(alertas) == 0:
+                    alertas.append("No se detectaron alertas significativas de negocio ni anomalías estadísticas.")
+
+                st.subheader("Análisis de IA y Explicabilidad")
+                st.info(
+                    f"El siniestro {selected_id[:8]} fue clasificado como **{row['nivel_riesgo'].upper()}** "
+                    f"(score: {row['score_final']}/100) por los siguientes factores:\n\n" +
+                    "\n".join([f"- {a}" for a in alertas]) +
+                    "\n\n*Recomendación: " + 
+                    ("Escalar inmediatamente a la Unidad Antifraude para revisión especializada de campo." if row['nivel_riesgo'] == 'Rojo' 
+                     else "Revisión documental manual requerida antes de pago." if row['nivel_riesgo'] == 'Amarillo' 
+                     else "Proceder con flujo de pago rápido (Fast-Track).*")
+                )
+
+                # Generar conclusión con Gemini
                 if "agent" not in st.session_state:
                     st.session_state.agent = ClaimsAgent(df)
                 
                 agent = st.session_state.agent
-                # Extraer solo los campos relevantes para pasarlos a la IA
                 datos_clave = {
                     "ramo": row.get("ramo"),
                     "monto_reclamado": row.get("monto_reclamado"),
@@ -233,7 +232,7 @@ elif page == "Detalle de Siniestro":
                     "descripcion": row.get("descripcion")
                 }
                 conclusion = agent.analyze_single_claim(datos_clave, alertas)
-                st.success("### Conclusión Generada por IA")
+                st.success("### Conclusión Ejecutiva (Gemini)")
                 st.write(conclusion)
 
 elif page == "Asistente IA (Gemini)":
@@ -439,6 +438,21 @@ elif page == "✍️ Registrar Siniestro":
 
             if nlp_score > 0.70:
                 st.warning(f"🔍 Descripción con {int(nlp_score*100)}% de similitud al siniestro `{id_similar}`.")
+                
+            st.markdown("---")
+            with st.spinner("Generando conclusión ejecutiva con Gemini..."):
+                if "agent" not in st.session_state:
+                    st.session_state.agent = ClaimsAgent(df)
+                
+                datos_clave = {
+                    "ramo": ramo,
+                    "monto_reclamado": monto_reclamado,
+                    "cobertura": cobertura,
+                    "score_final": score_final,
+                    "descripcion": descripcion
+                }
+                conclusion = st.session_state.agent.analyze_single_claim(datos_clave, alertas)
+                st.info("### Conclusión Ejecutiva (Gemini)\n" + conclusion)
 
         # --- Guardar en Supabase (si está configurado) ---
         st.markdown("---")
