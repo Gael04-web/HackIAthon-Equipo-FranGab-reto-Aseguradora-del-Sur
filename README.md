@@ -43,43 +43,61 @@ La app combina un pipeline de machine learning para clasificar el portafolio com
 ### 1. Clonar el repositorio
 
 ```bash
-git clone <url-del-repo>
-cd Agente-IA
+git clone https://github.com/Gael04-web/HackIAthon-Equipo-FranGab-reto-Aseguradora-del-Sur.git
+cd HackIAthon-Equipo-FranGab-reto-Aseguradora-del-Sur
 ```
 
 ### 2. Crear entorno virtual e instalar dependencias
 
 ```bash
 python -m venv venv
+```
 
+```bash
 # Windows
 venv\Scripts\activate
 
 # Mac / Linux
 source venv/bin/activate
+```
 
+```bash
 pip install -r requirements.txt
 ```
 
 ### 3. Configurar variables de entorno
 
-Copia el archivo de ejemplo y completa tus credenciales:
-
 ```bash
+# Windows
+copy .env.example .env
+
+# Mac / Linux
 cp .env.example .env
 ```
 
+Abre el archivo `.env` y completa las tres variables:
+
 ```
 SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_KEY=eyJhbGci...        ← clave "anon public" de tu proyecto
+SUPABASE_KEY=eyJhbGci...
 GEMINI_API_KEY=AIzaSy...
 ```
 
 **¿Dónde están las credenciales de Supabase?**
-Proyecto → *Project Settings* → *API* → copia *Project URL* y *anon public key*.
+Proyecto en [supabase.com](https://supabase.com) → *Project Settings* → *API* → copia *Project URL* y *anon public key*.
 
-**¿Y la de Gemini?**
-Entra a [aistudio.google.com](https://aistudio.google.com) → *Get API Key* → crea una nueva.
+**¿Dónde está la API Key de Gemini?**
+Entra a [aistudio.google.com](https://aistudio.google.com) → *Get API Key* → crea una nueva (es gratis).
+
+### 4. Colocar el dataset
+
+Copia el archivo Excel del dataset en la carpeta del proyecto:
+
+```
+data/
+└── dataset/
+    └── Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx   ← aquí
+```
 
 ---
 
@@ -97,25 +115,37 @@ Luego vuelve a ejecutar el schema.
 
 ---
 
-## Cargar los datos de ejemplo
+## Cargar los datos reales a Supabase
 
-El generador crea 500 siniestros con distribución realista (15% fraude, 20% sospechoso, 65% normal) y 1.000 documentos asociados:
+El dataset real está en `data/dataset/Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx`. Este archivo contiene 500 siniestros, 174 asegurados, 33 proveedores y 1.263 documentos con datos reales de Ecuador.
+
+Corre este script **una sola vez** para subir todo a Supabase:
 
 ```bash
 python src/ingestion/load_data.py
 ```
 
-Si las credenciales de Supabase no están configuradas, genera igual un CSV local en `data/synthetic/siniestros.csv` que la app usa como fallback.
+También guarda un CSV local en `data/synthetic/siniestros.csv` que la app usa como fallback si Supabase no está disponible.
 
 ---
 
 ## Ejecutar la aplicación
 
+### Opción A — Local (desarrollo)
+
 ```bash
 streamlit run src/app/main.py
 ```
 
-Se abre en `http://localhost:8501`. La primera carga tarda 5-15 segundos porque entrena los modelos ML.
+Se abre en `http://localhost:8501`. La primera carga tarda 5-15 segundos porque entrena los modelos ML con los datos de Supabase.
+
+### Opción B — Docker (producción)
+
+```bash
+docker-compose up --build
+```
+
+El contenedor lee los datos directamente de Supabase al arrancar usando las credenciales del `.env`. No necesita el Excel ni correr `load_data.py` — eso ya se hizo una vez antes.
 
 ---
 
@@ -188,15 +218,17 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 │   │                            Genera el score_ml para los 500 siniestros del portafolio.
 │   │
 │   ├── rules/
-│   │   └── fraud_rules.py    → Motor de reglas: 8 reglas antifraude codificadas por expertos
-│   │                            (RF-01 a RF-08). También las usa el agente como tool.
+│   │   └── fraud_rules.py    → Motor de reglas: 9 reglas antifraude codificadas por expertos
+│   │                            (RF-01 a RF-09). También las usa el agente como tool.
 │   │
 │   └── explainability/
 │       └── explain_score.py  → Genera explicaciones legibles del score ML para el analista.
 │
 ├── data/
+│   ├── dataset/
+│   │   └── Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx  → Dataset real (agregar manualmente)
 │   └── synthetic/
-│       └── siniestros.csv    → 500 siniestros de ejemplo listos para usar como demo.
+│       └── siniestros.csv    → CSV generado automáticamente como fallback local.
 │
 ├── docs/
 │   ├── schema.sql            → Script SQL para crear las tablas en Supabase
@@ -222,9 +254,10 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 | Frontend | Streamlit + Plotly |
 | Pipeline ML | scikit-learn — Random Forest, Isolation Forest, TF-IDF |
 | Agente IA | Google Gemini 2.5 Flash con function calling (9 tools) |
-| Base de datos | Supabase (PostgreSQL) |
+| Base de datos | Supabase (PostgreSQL) via REST API |
 | Generación de reportes | fpdf2 |
-| Datos sintéticos | Faker (locale español) |
+| Dataset | Excel real — 500 siniestros Ecuador (`openpyxl`) |
+| Despliegue | Docker + docker-compose |
 
 ---
 

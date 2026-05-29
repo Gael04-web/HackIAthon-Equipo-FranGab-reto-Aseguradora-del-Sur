@@ -154,9 +154,10 @@ A través de recuperación: `get_confirmed_fraud_cases()` lee los casos validado
 | Frontend | Streamlit + Plotly |
 | ML batch | scikit-learn (RandomForest, IsolationForest, TF-IDF) |
 | Agente IA | Google Gemini 2.5 Flash con function calling |
-| Base de Datos | Supabase (PostgreSQL) |
+| Base de Datos | Supabase (PostgreSQL) via REST API (`requests`) |
 | Generación PDF | fpdf2 |
-| Datos Sintéticos | Faker (locale `es_ES`) |
+| Dataset | Excel real — 500 siniestros Ecuador (`openpyxl`) |
+| Despliegue | Docker + docker-compose |
 | Config | python-dotenv |
 
 ---
