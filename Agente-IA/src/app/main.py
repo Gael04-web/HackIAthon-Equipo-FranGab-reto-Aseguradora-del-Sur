@@ -261,33 +261,68 @@ elif page == "Detalle de Siniestro":
 
         st.markdown("---")
 
-        if st.button("✨ Realizar Análisis Total con Inteligencia Artificial"):
-            with st.spinner("Gemini 2.5 procesando datos del siniestro..."):
+        if st.button("✨ Análisis Profundo con Agente IA (Gemini)"):
+            with st.spinner("El agente está consultando la base de datos, aplicando reglas y aprendiendo de fraudes confirmados..."):
                 if "agent" not in st.session_state:
-                    st.session_state.agent = ClaimsAgent(df)
+                    st.session_state.agent = ClaimsAgent(df, get_supabase_client())
                 datos_clave = {
-                    "id_siniestro":                    selected_id[:8],
-                    "ramo":                            row.get("ramo"),
-                    "monto_reclamado":                 row.get("monto_reclamado"),
-                    "monto_estimado":                  row.get("monto_estimado"),
-                    "cobertura":                       row.get("cobertura"),
-                    "dias_desde_inicio_poliza":        row.get("dias_desde_inicio_poliza"),
-                    "dias_entre_ocurrencia_reporte":   row.get("dias_entre_ocurrencia_reporte"),
-                    "historial_siniestros_asegurado":  row.get("historial_siniestros_asegurado"),
-                    "documentos_completos":            row.get("documentos_completos"),
-                    "descripcion":                     row.get("descripcion"),
-                    "score_riesgo_calculado":          row.get("score_final"),
+                    "id_siniestro":                   selected_id,
+                    "id_asegurado":                   row.get("id_asegurado"),
+                    "id_proveedor":                   row.get("id_proveedor"),
+                    "ramo":                           row.get("ramo"),
+                    "cobertura":                      row.get("cobertura"),
+                    "monto_reclamado":                row.get("monto_reclamado"),
+                    "monto_estimado":                 row.get("monto_estimado"),
+                    "suma_asegurada":                 row.get("suma_asegurada"),
+                    "dias_desde_inicio_poliza":       row.get("dias_desde_inicio_poliza"),
+                    "dias_desde_fin_poliza":          row.get("dias_desde_fin_poliza"),
+                    "dias_entre_ocurrencia_reporte":  row.get("dias_entre_ocurrencia_reporte"),
+                    "historial_siniestros_asegurado": row.get("historial_siniestros_asegurado"),
+                    "documentos_completos":           row.get("documentos_completos"),
+                    "en_lista_restrictiva":           row.get("en_lista_restrictiva"),
+                    "pct_casos_observados_proveedor": row.get("pct_casos_observados"),
+                    "reclamos_asociados_proveedor":   row.get("reclamos_asociados_proveedor"),
+                    "descripcion":                    row.get("descripcion"),
+                    "score_ml":                       row.get("score_final"),
                 }
-                conclusion = st.session_state.agent.analyze_single_claim(datos_clave)
-                # Persistir conclusión en session state para que sobreviva reruns
-                st.session_state[f"conclusion_{selected_id}"] = conclusion
+                analysis = st.session_state.agent.analyze_single_claim(datos_clave)
+                st.session_state[f"analysis_{selected_id}"] = analysis
 
-        # Mostrar conclusión si ya fue generada (persiste entre reruns)
-        if f"conclusion_{selected_id}" in st.session_state:
-            conclusion = st.session_state[f"conclusion_{selected_id}"]
-            st.success(conclusion)
+        # Mostrar análisis de Gemini si ya fue generado
+        if f"analysis_{selected_id}" in st.session_state:
+            analysis = st.session_state[f"analysis_{selected_id}"]
+
+            st.markdown("---")
+            st.subheader("🤖 Resultado del Agente IA")
+
+            # Comparativa de scores: ML vs Gemini
+            sa, sb_col, sc = st.columns(3)
+            sa.metric("Score ML (pipeline)", f"{row['score_final']:.0f}/100",
+                      help="Calculado por Random Forest + Isolation Forest + Reglas")
+            gemini_score = analysis.get("score", 0)
+            gemini_nivel = analysis.get("nivel_riesgo", "N/A")
+            delta = gemini_score - int(row['score_final'])
+            sb_col.metric("Score Gemini (agente)", f"{gemini_score}/100",
+                          delta=f"{delta:+d} vs ML",
+                          help="Calculado por Gemini tras consultar la BD y aprender de fraudes confirmados")
+            sc.metric("Nivel según Gemini", gemini_nivel)
+
+            # Factores detectados por Gemini
+            factores = analysis.get("factores", [])
+            if factores:
+                st.markdown("**Factores de riesgo identificados por el agente:**")
+                for f_item in factores:
+                    st.markdown(f"- {f_item}")
+
+            # Conclusión ejecutiva
+            conclusion = analysis.get("conclusion", "")
+            if conclusion:
+                st.success(conclusion)
+
+            # PDF con score de Gemini
+            pdf_nivel = gemini_nivel if gemini_nivel != "N/A" else row["nivel_riesgo"]
             pdf_bytes = generate_pdf_report(
-                selected_id[:8], row['nivel_riesgo'], row['score_final'], conclusion
+                selected_id[:8], pdf_nivel, gemini_score, conclusion
             )
             st.download_button(
                 label="📄 Descargar Informe en PDF",
@@ -335,7 +370,7 @@ elif page == "Inspector FRAUDIA (Asistente)":
     st.markdown("Chatea con tu analista virtual experto sobre los datos del portafolio y patrones detectados.")
 
     if "agent" not in st.session_state:
-        st.session_state.agent = ClaimsAgent(df)
+        st.session_state.agent = ClaimsAgent(df, get_supabase_client())
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
