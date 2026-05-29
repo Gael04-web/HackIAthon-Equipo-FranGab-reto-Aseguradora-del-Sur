@@ -16,6 +16,23 @@ from fpdf import FPDF
 
 load_dotenv()
 
+def get_supabase_client():
+    """Retorna el cliente de Supabase si las credenciales están disponibles."""
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if url and key and "your_" not in key:
+        return create_client(url, key)
+    return None
+
+def guardar_decision_supabase(id_siniestro: str, decision: str):
+    """Actualiza la columna decision_analista en Supabase."""
+    sb = get_supabase_client()
+    if sb:
+        try:
+            sb.table("siniestros").update({"decision_analista": decision}).eq("id_siniestro", id_siniestro).execute()
+        except Exception as e:
+            st.warning(f"No se pudo guardar en Supabase: {e}")
+
 def generate_pdf_report(claim_id, risk_level, score, ai_text):
     pdf = FPDF()
     pdf.add_page()
@@ -53,14 +70,18 @@ def load_data():
     if url and key and "your_" not in key:
         try:
             supabase: Client = create_client(url, key)
-            # Para el prototipo, traemos siniestros y hacemos un join básico con otras tablas
-            # Lo más fácil es traer todo y mergear en pandas
             sin = supabase.table("siniestros").select("*").execute().data
             prov = supabase.table("proveedores").select("id_proveedor,nombre,en_lista_restrictiva,pct_casos_observados,reclamos_asociados").execute().data
             
             df_sin = pd.DataFrame(sin)
             df_prov = pd.DataFrame(prov)
             df_prov = df_prov.rename(columns={'nombre': 'nombre_proveedor', 'reclamos_asociados': 'reclamos_asociados_proveedor'})
+            
+            # Asegurar columna decision_analista
+            if 'decision_analista' not in df_sin.columns:
+                df_sin['decision_analista'] = 'Pendiente'
+            else:
+                df_sin['decision_analista'] = df_sin['decision_analista'].fillna('Pendiente')
             
             if not df_sin.empty and not df_prov.empty:
                 df_siniestros = df_sin.merge(df_prov, on="id_proveedor", how="left")
@@ -71,12 +92,14 @@ def load_data():
         csv_path = os.path.join(os.path.dirname(__file__), '../../data/synthetic/siniestros.csv')
         if os.path.exists(csv_path):
             df_siniestros = pd.read_csv(csv_path)
-            # Simulamos datos de proveedor que normalmente vendrían de un JOIN
             if 'en_lista_restrictiva' not in df_siniestros.columns:
                 df_siniestros['en_lista_restrictiva'] = False
                 df_siniestros['pct_casos_observados'] = 0.0
                 df_siniestros['reclamos_asociados_proveedor'] = 0
                 df_siniestros['nombre_proveedor'] = "Proveedor Fallback"
+            # Columna de decisiones en fallback CSV
+            if 'decision_analista' not in df_siniestros.columns:
+                df_siniestros['decision_analista'] = 'Pendiente'
         else:
             st.error("No se encontraron datos en la BD ni el archivo CSV.")
             return pd.DataFrame()
@@ -118,7 +141,7 @@ def get_color_for_riesgo(riesgo):
 if page == "Dashboard Principal":
     st.title("🛡️ Dashboard de Siniestros")
     
-    # KPIs
+    # KPIs Fila 1
     col1, col2, col3, col4 = st.columns(4)
     total_siniestros = len(df)
     pct_rojos = (len(df[df['nivel_riesgo'] == 'Rojo']) / total_siniestros) * 100 if total_siniestros else 0
@@ -129,6 +152,16 @@ if page == "Dashboard Principal":
     col2.metric("% Nivel Rojo", f"{pct_rojos:.1f}%")
     col3.metric("% Nivel Amarillo", f"{pct_amarillos:.1f}%")
     col4.metric("Monto en Riesgo ($)", f"${monto_riesgo:,.2f}")
+    
+    # KPIs Fila 2 - Decisiones del Analista (viene del df cargado desde Supabase)
+    st.markdown("##### 📊 Estado de Revisión por el Analista")
+    d1, d2, d3 = st.columns(3)
+    n_fraude = len(df[df.get('decision_analista', pd.Series()) == 'Fraude Confirmado']) if 'decision_analista' in df.columns else 0
+    n_legitimo = len(df[df['decision_analista'] == 'Legítimo']) if 'decision_analista' in df.columns else 0
+    n_pendiente = total_siniestros - n_fraude - n_legitimo
+    d1.metric("⏳ Pendientes de Revisión", n_pendiente, help="Casos que la IA ya analizó pero el analista humano aún no ha tomado una decisión final.")
+    d2.metric("🚨 Fraudes Confirmados", n_fraude, help="Casos donde el analista confirmó que sí era un intento de fraude.")
+    d3.metric("✅ Clientes Legítimos", n_legitimo, help="Casos donde el analista verificó que el cliente era honesto y el pago debe proceder.")
     
     st.markdown("---")
     
@@ -242,6 +275,32 @@ elif page == "Detalle de Siniestro":
                     file_name=f"Reporte_Siniestro_{selected_id[:8]}.pdf",
                     mime="application/pdf"
                 )
+        
+        st.markdown("---")
+        st.subheader("👨‍⚖️ Decisión del Analista")
+        st.write("Luego de revisar el análisis de la IA, confirma la decisión final sobre este siniestro:")
+        
+        decision_actual = row.get('decision_analista', 'Pendiente') if 'decision_analista' in df.columns else 'Pendiente'
+        
+        if decision_actual and decision_actual != 'Pendiente':
+            if decision_actual == 'Fraude Confirmado':
+                st.error(f"🚨 Decisión registrada: **{decision_actual}** — El pago ha sido bloqueado.")
+            else:
+                st.success(f"✅ Decisión registrada: **{decision_actual}** — El pago puede proceder.")
+            if st.button("🔄 Cambiar decisión"):
+                guardar_decision_supabase(selected_id, 'Pendiente')
+                load_data.clear()
+                st.rerun()
+        else:
+            bc1, bc2 = st.columns(2)
+            if bc1.button("🚨 Confirmar como FRAUDE", use_container_width=True):
+                guardar_decision_supabase(selected_id, 'Fraude Confirmado')
+                load_data.clear()
+                st.rerun()
+            if bc2.button("✅ Marcar como CLIENTE LEGÍTIMO", use_container_width=True):
+                guardar_decision_supabase(selected_id, 'Legítimo')
+                load_data.clear()
+                st.rerun()
 
 elif page == "Inspector FRAUDIA (Asistente)":
     st.title("🤖 Inspector FRAUDIA - Asistente Antifraude")
