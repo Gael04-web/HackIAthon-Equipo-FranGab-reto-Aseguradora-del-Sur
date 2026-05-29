@@ -11,8 +11,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Datos locales generados
+# Datos locales generados (excepto el CSV de ejemplo para demo)
 data/synthetic/*.csv
+!data/synthetic/siniestros.csv
 
 # Otros de Sistema / IDE
 .DS_Store
