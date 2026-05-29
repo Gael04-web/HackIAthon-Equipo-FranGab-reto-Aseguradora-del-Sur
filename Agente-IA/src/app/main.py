@@ -156,12 +156,15 @@ if page == "Dashboard Principal":
     # KPIs Fila 2 - Decisiones del Analista (viene del df cargado desde Supabase)
     st.markdown("##### 📊 Estado de Revisión por el Analista")
     d1, d2, d3 = st.columns(3)
-    n_fraude = len(df[df.get('decision_analista', pd.Series()) == 'Fraude Confirmado']) if 'decision_analista' in df.columns else 0
+    n_fraude = len(df[df['decision_analista'] == 'Fraude Confirmado']) if 'decision_analista' in df.columns else 0
     n_legitimo = len(df[df['decision_analista'] == 'Legítimo']) if 'decision_analista' in df.columns else 0
-    n_pendiente = total_siniestros - n_fraude - n_legitimo
-    d1.metric("⏳ Pendientes de Revisión", n_pendiente, help="Casos que la IA ya analizó pero el analista humano aún no ha tomado una decisión final.")
-    d2.metric("🚨 Fraudes Confirmados", n_fraude, help="Casos donde el analista confirmó que sí era un intento de fraude.")
-    d3.metric("✅ Clientes Legítimos", n_legitimo, help="Casos donde el analista verificó que el cliente era honesto y el pago debe proceder.")
+    n_investigacion = len(df[df['decision_analista'] == 'En Investigación']) if 'decision_analista' in df.columns else 0
+    n_pendiente = total_siniestros - n_fraude - n_legitimo - n_investigacion
+    d1, d2, d3, d4 = st.columns(4)
+    d1.metric("⏳ Pendientes", n_pendiente, help="Sin decisión del analista aún.")
+    d2.metric("🚨 Fraudes Confirmados", n_fraude, help="Fraude verificado. Pago bloqueado.")
+    d3.metric("🔍 En Investigación", n_investigacion, help="Casos que requieren revisión de campo antes de decidir.")
+    d4.metric("✅ Legítimos", n_legitimo, help="Cliente honesto. Pago aprobado.")
     
     st.markdown("---")
     
@@ -285,6 +288,8 @@ elif page == "Detalle de Siniestro":
         if decision_actual and decision_actual != 'Pendiente':
             if decision_actual == 'Fraude Confirmado':
                 st.error(f"🚨 Decisión registrada: **{decision_actual}** — El pago ha sido bloqueado.")
+            elif decision_actual == 'En Investigación':
+                st.warning(f"🔍 Decisión registrada: **{decision_actual}** — Se abrió expediente de campo. Pago suspendido temporalmente.")
             else:
                 st.success(f"✅ Decisión registrada: **{decision_actual}** — El pago puede proceder.")
             if st.button("🔄 Cambiar decisión"):
@@ -292,12 +297,16 @@ elif page == "Detalle de Siniestro":
                 load_data.clear()
                 st.rerun()
         else:
-            bc1, bc2 = st.columns(2)
+            bc1, bc2, bc3 = st.columns(3)
             if bc1.button("🚨 Confirmar como FRAUDE", use_container_width=True):
                 guardar_decision_supabase(selected_id, 'Fraude Confirmado')
                 load_data.clear()
                 st.rerun()
-            if bc2.button("✅ Marcar como CLIENTE LEGÍTIMO", use_container_width=True):
+            if bc2.button("🔍 Enviar a INVESTIGACIÓN", use_container_width=True):
+                guardar_decision_supabase(selected_id, 'En Investigación')
+                load_data.clear()
+                st.rerun()
+            if bc3.button("✅ Marcar como CLIENTE LEGÍTIMO", use_container_width=True):
                 guardar_decision_supabase(selected_id, 'Legítimo')
                 load_data.clear()
                 st.rerun()
