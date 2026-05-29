@@ -328,39 +328,56 @@ elif page == "✍️ Registrar Siniestro":
     with st.form("form_siniestro", clear_on_submit=False):
         st.subheader("📄 Datos Básicos del Siniestro")
         c1, c2, c3 = st.columns(3)
-        ramo = c1.selectbox("Ramo", ["Vehiculos", "Salud", "Vida", "Hogar", "Generales"])
-        cobertura = c2.selectbox("Cobertura", ["Choque", "Robo", "Enfermedad", "Incendio", "RC"])
-        estado = c3.selectbox("Estado", ["Reportado", "En Analisis", "Aprobado", "Rechazado"])
+        ramo = c1.selectbox("Ramo", ["Vehiculos", "Salud", "Vida", "Hogar", "Generales"], 
+                            help="Categoría principal del seguro. Vehículos suele tener mayor frecuencia de fraude.")
+        cobertura = c2.selectbox("Cobertura", ["Choque", "Robo", "Enfermedad", "Incendio", "RC"], 
+                                 help="Tipo de evento cubierto. El robo total tiene el riesgo más alto.")
+        estado = c3.selectbox("Estado", ["Reportado", "En Analisis", "Aprobado", "Rechazado"],
+                              help="Estado actual del trámite. Por defecto, inicia en Reportado.")
 
         c1b, c2b = st.columns(2)
-        fecha_ocurrencia = c1b.date_input("Fecha de Ocurrencia", value=date.today())
-        fecha_reporte    = c2b.date_input("Fecha de Reporte",    value=date.today())
+        fecha_ocurrencia = c1b.date_input("Fecha de Ocurrencia", value=date.today(), 
+                                          help="¿Cuándo ocurrió el accidente? Se usa para calcular reportes tardíos.")
+        fecha_reporte    = c2b.date_input("Fecha de Reporte",    value=date.today(),
+                                          help="¿Cuándo se comunicó el cliente con la aseguradora?")
 
         st.subheader("💰 Montos")
         c1c, c2c, c3c = st.columns(3)
-        monto_reclamado  = c1c.number_input("Monto Reclamado ($)", min_value=0.0, value=5000.0, step=100.0)
-        monto_estimado   = c2c.number_input("Monto Estimado ($)",  min_value=0.0, value=4500.0, step=100.0)
-        suma_asegurada   = c3c.number_input("Suma Asegurada de la Póliza ($)", min_value=1.0, value=20000.0, step=500.0)
+        monto_reclamado  = c1c.number_input("Monto Reclamado ($)", min_value=0.0, value=5000.0, step=100.0,
+                                            help="Dinero exacto que solicita el cliente. Montos sospechosamente cercanos a la suma asegurada generan alertas.")
+        monto_estimado   = c2c.number_input("Monto Estimado ($)",  min_value=0.0, value=4500.0, step=100.0,
+                                            help="Valor que el ajustador interno o taller pre-calcula.")
+        suma_asegurada   = c3c.number_input("Suma Asegurada de la Póliza ($)", min_value=1.0, value=20000.0, step=500.0,
+                                            help="Límite máximo de cobertura estipulado en el contrato.")
 
         st.subheader("👤 Datos del Asegurado y Proveedor")
         c1d, c2d, c3d = st.columns(3)
-        historial        = c1d.number_input("Siniestros previos del asegurado", min_value=0, value=0, step=1)
-        docs_completos   = c2d.checkbox("Documentos completos", value=True)
-        lista_restrictiva= c3d.checkbox("Proveedor en lista restrictiva", value=False)
+        historial        = c1d.number_input("Siniestros previos del asegurado", min_value=0, value=0, step=1,
+                                            help="Cantidad de veces que este cliente ha reclamado antes. Mayor a 3 es muy sospechoso.")
+        docs_completos   = c2d.checkbox("Documentos completos", value=True,
+                                        help="Desmarca esto si el cliente se niega a entregar partes policiales, facturas, etc.")
+        lista_restrictiva= c3d.checkbox("Proveedor en lista restrictiva", value=False,
+                                        help="Marca esto si el taller o médico está fichado por fraudes previos en el sistema.")
 
         c1e, c2e = st.columns(2)
-        pct_obs          = c1e.slider("% casos observados del proveedor", 0.0, 1.0, 0.05, 0.01)
-        reclamos_prov    = c2e.number_input("Reclamos asociados al proveedor", min_value=0, value=5, step=1)
+        pct_obs          = c1e.slider("% casos observados del proveedor", 0.0, 1.0, 0.05, 0.01,
+                                      help="Porcentaje histórico de casos de este proveedor que han tenido irregularidades.")
+        reclamos_prov    = c2e.number_input("Reclamos asociados al proveedor", min_value=0, value=5, step=1,
+                                            help="Volumen total de reclamos que ha tramitado este proveedor (taller/clínica).")
 
-        st.subheader("📅 Tiempos")
+        st.subheader("📅 Tiempos (Análisis Predictivo)")
         c1f, c2f, c3f = st.columns(3)
-        dias_desde_inicio = c1f.number_input("Días desde inicio de la póliza", min_value=0, value=90, step=1)
-        dias_desde_fin    = c2f.number_input("Días hasta fin de la póliza", min_value=0, value=275, step=1)
-        dias_reporte      = c3f.number_input("Días entre ocurrencia y reporte", min_value=0, value=1, step=1)
+        dias_desde_inicio = c1f.number_input("Días desde inicio de la póliza", min_value=0, value=90, step=1,
+                                             help="Siniestros reportados en los primeros 10-30 días levantan máxima alerta de fraude oportunista.")
+        dias_desde_fin    = c2f.number_input("Días hasta fin de la póliza", min_value=0, value=275, step=1,
+                                             help="Siniestros que ocurren justo antes de que caduque el seguro también son patrón de riesgo.")
+        dias_reporte      = c3f.number_input("Días entre ocurrencia y reporte", min_value=0, value=1, step=1,
+                                             help="Un reporte demorado (ej. > 5 días) dificulta la investigación y suma puntos de alerta.")
 
         descripcion = st.text_area("📝 Descripción del siniestro", height=100,
-                                   placeholder="Describe brevemente cómo ocurrió el siniestro...")
-        beneficiario = st.text_input("👨‍👩‍👧 Beneficiario")
+                                   placeholder="Describe brevemente cómo ocurrió el siniestro...",
+                                   help="La IA de Lenguaje Natural leerá esto para buscar similitudes exactas con historias de fraude ya conocidas.")
+        beneficiario = st.text_input("👨‍👩‍👧 Beneficiario", help="Persona o entidad que recibirá el pago final.")
 
         submitted = st.form_submit_button("📊 Calcular Score de Riesgo", use_container_width=True)
 
