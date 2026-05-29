@@ -95,7 +95,7 @@ class ClaimsAgent:
             f"DATOS DEL SINIESTRO: {str(claim_data)}\n\n"
             "Por favor, redacta tu análisis estructurado exactamente en dos partes:\n\n"
             "### 🚨 Factores de Riesgo Detectados por la IA\n"
-            "(Crea una lista de viñetas mencionando las cosas sospechosas que encuentres en los datos, por ejemplo: "
+            "(Crea una lista de viñetas mencionando las cosas sospechosas que encuentres en los datos. IMPORTANTE: NO uses formato de código ni comillas invertidas (`) en el texto, escribe todo normal. Por ejemplo: "
             "si los días desde inicio de póliza son muy pocos, si el monto reclamado es casi igual a la suma asegurada, "
             "si el historial de siniestros es alto, o si faltan documentos. Si el score_riesgo_calculado es alto, menciónalo como un patrón anómalo detectado).\n\n"
             "### 📋 Conclusión Ejecutiva\n"

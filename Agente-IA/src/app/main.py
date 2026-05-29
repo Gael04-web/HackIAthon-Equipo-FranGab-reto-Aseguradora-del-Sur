@@ -38,7 +38,7 @@ def generate_pdf_report(claim_id, risk_level, score, ai_text):
     safe_text = ai_text.encode('latin-1', 'replace').decode('latin-1')
     pdf.multi_cell(0, 8, safe_text)
     
-    return pdf.output(dest='S').encode('latin-1')
+    return bytes(pdf.output())
 
 st.set_page_config(page_title="Fraudia Claims - Aseguradora del Sur", layout="wide", page_icon="🛡️")
 
