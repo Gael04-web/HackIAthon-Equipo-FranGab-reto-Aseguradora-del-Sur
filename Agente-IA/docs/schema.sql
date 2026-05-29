@@ -58,7 +58,8 @@ CREATE TABLE siniestros (
     dias_desde_fin_poliza INT,
     dias_entre_ocurrencia_reporte INT,
     historial_siniestros_asegurado INT,
-    etiqueta_fraude_simulada INT DEFAULT 0
+    etiqueta_fraude_simulada INT DEFAULT 0,
+    decision_analista TEXT DEFAULT 'Pendiente'
 );
 
 CREATE TABLE documentos (

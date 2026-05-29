@@ -21,10 +21,10 @@ RAMOS_PROBS = {"Vehiculos": 0.50, "Salud": 0.20, "Vida": 0.15, "Hogar": 0.15}
 RAMOS = list(RAMOS_PROBS.keys())
 PROBS = list(RAMOS_PROBS.values())
 
-N_ASEGURADOS = 10
-N_POLIZAS = 10
-N_PROVEEDORES = 5
-N_SINIESTROS = 10
+N_ASEGURADOS = 200
+N_POLIZAS = 300
+N_PROVEEDORES = 50
+N_SINIESTROS = 500
 N_DOCUMENTOS = 20
 
 def generate_data():
