@@ -12,8 +12,33 @@ from src.models.fraud_model import FraudModelPipeline
 from src.explainability.explain_score import explain_score
 from src.ai_agent.claims_agent import ClaimsAgent
 from dotenv import load_dotenv
+from fpdf import FPDF
 
 load_dotenv()
+
+def generate_pdf_report(claim_id, risk_level, score, ai_text):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "Reporte de Análisis de Siniestro - Fraudia Claims", ln=True, align="C")
+    pdf.ln(5)
+    
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, f"ID de Siniestro: {claim_id}", ln=True)
+    pdf.cell(0, 10, f"Nivel de Riesgo Calculado: {risk_level.upper()}", ln=True)
+    pdf.cell(0, 10, f"Score de Fraude: {score}/100", ln=True)
+    pdf.ln(5)
+    
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, "Conclusión Ejecutiva (Inspector FRAUDIA):", ln=True)
+    
+    pdf.set_font("Arial", '', 11)
+    # Convertir texto unicode a latin-1 para compatibilidad básica en FPDF, o usar multi_cell
+    # FPDF por defecto usa latin-1, reemplazamos caracteres raros
+    safe_text = ai_text.encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 8, safe_text)
+    
+    return pdf.output(dest='S').encode('latin-1')
 
 st.set_page_config(page_title="Fraudia Claims - Aseguradora del Sur", layout="wide", page_icon="🛡️")
 
@@ -79,7 +104,7 @@ st.sidebar.title("Fraudia Claims")
 page = st.sidebar.radio("Navegación", [
     "Dashboard Principal", 
     "Detalle de Siniestro", 
-    "Asistente IA (Gemini)", 
+    "Inspector FRAUDIA (Asistente)", 
     "Métricas del Modelo",
     "✍️ Registrar Siniestro"
 ])
@@ -184,60 +209,43 @@ elif page == "Detalle de Siniestro":
         st.markdown("---")
         st.markdown("---")
         
-        if st.button("✨ Realizar Análisis de IA y Explicabilidad"):
-            with st.spinner("Inicializando motores de IA y procesando datos..."):
-                # Generar las alertas desde el motor de reglas
-                from src.rules.fraud_rules import calculate_rule_score
-                res = calculate_rule_score(row.to_dict())
-                alertas = res["alertas"]
-                
-                # Añadir explicabilidad del ML
-                similitud = row.get("max_similarity_nlp", 0)
-                id_sim = row.get("id_siniestro_similar", "N/A")
-                if similitud > 0.85:
-                    alertas.append(f"[ALTO] La descripción presenta alta similitud ({int(similitud*100)}%) con el siniestro {id_sim} (+8 pts).")
-                    
-                prob_rf = row.get("prob_rf", 0)
-                if prob_rf > 0.6:
-                    alertas.append(f"[ALTO] El modelo predictivo indica alta probabilidad ({int(prob_rf*100)}%) basada en patrones históricos.")
-                    
-                anomaly = row.get("anomaly_score", 0)
-                if anomaly > 0.7:
-                    alertas.append("[MEDIO] Anomalía detectada en los datos en comparación al comportamiento habitual del portafolio.")
-
-                if len(alertas) == 0:
-                    alertas.append("No se detectaron alertas significativas de negocio ni anomalías estadísticas.")
-
-                st.subheader("Análisis de IA y Explicabilidad")
-                st.info(
-                    f"El siniestro {selected_id[:8]} fue clasificado como **{row['nivel_riesgo'].upper()}** "
-                    f"(score: {row['score_final']}/100) por los siguientes factores:\n\n" +
-                    "\n".join([f"- {a}" for a in alertas]) +
-                    "\n\n*Recomendación: " + 
-                    ("Escalar inmediatamente a la Unidad Antifraude para revisión especializada de campo." if row['nivel_riesgo'] == 'Rojo' 
-                     else "Revisión documental manual requerida antes de pago." if row['nivel_riesgo'] == 'Amarillo' 
-                     else "Proceder con flujo de pago rápido (Fast-Track).*")
-                )
-
-                # Generar conclusión con Gemini
+        if st.button("✨ Realizar Análisis Total con Inteligencia Artificial"):
+            with st.spinner("Gemini 2.5 procesando datos del siniestro..."):
                 if "agent" not in st.session_state:
                     st.session_state.agent = ClaimsAgent(df)
                 
                 agent = st.session_state.agent
+                
+                # Le pasamos todos los datos puros a Gemini para que haga el trabajo
                 datos_clave = {
+                    "id_siniestro": selected_id[:8],
                     "ramo": row.get("ramo"),
                     "monto_reclamado": row.get("monto_reclamado"),
+                    "monto_estimado": row.get("monto_estimado"),
                     "cobertura": row.get("cobertura"),
-                    "score_final": row.get("score_final"),
-                    "descripcion": row.get("descripcion")
+                    "dias_desde_inicio_poliza": row.get("dias_desde_inicio_poliza"),
+                    "dias_entre_ocurrencia_reporte": row.get("dias_entre_ocurrencia_reporte"),
+                    "historial_siniestros_asegurado": row.get("historial_siniestros_asegurado"),
+                    "documentos_completos": row.get("documentos_completos"),
+                    "descripcion": row.get("descripcion"),
+                    "score_riesgo_calculado": row.get("score_final")
                 }
-                conclusion = agent.analyze_single_claim(datos_clave, alertas)
-                st.success("### Conclusión Ejecutiva (Gemini)")
-                st.write(conclusion)
+                
+                conclusion = agent.analyze_single_claim(datos_clave)
+                st.success(conclusion)
+                
+                # Botón de PDF
+                pdf_bytes = generate_pdf_report(selected_id[:8], row['nivel_riesgo'], row['score_final'], conclusion)
+                st.download_button(
+                    label="📄 Descargar Informe en PDF",
+                    data=pdf_bytes,
+                    file_name=f"Reporte_Siniestro_{selected_id[:8]}.pdf",
+                    mime="application/pdf"
+                )
 
-elif page == "Asistente IA (Gemini)":
-    st.title("🤖 Asistente Antifraude Gemini")
-    st.write("Consulta al agente conversacional sobre los siniestros o patrones detectados.")
+elif page == "Inspector FRAUDIA (Asistente)":
+    st.title("🤖 Inspector FRAUDIA - Asistente Antifraude")
+    st.markdown("Chatea con tu analista virtual experto sobre los datos del portafolio y patrones detectados.")
     
     # Inicializar agente en session state
     if "agent" not in st.session_state:
@@ -436,11 +444,8 @@ elif page == "✍️ Registrar Siniestro":
             else:
                 st.success("✅ No se detectaron alertas en este siniestro.")
 
-            if nlp_score > 0.70:
-                st.warning(f"🔍 Descripción con {int(nlp_score*100)}% de similitud al siniestro `{id_similar}`.")
-                
             st.markdown("---")
-            with st.spinner("Generando conclusión ejecutiva con Gemini..."):
+            with st.spinner("Generando análisis completo con Gemini IA..."):
                 if "agent" not in st.session_state:
                     st.session_state.agent = ClaimsAgent(df)
                 
@@ -448,11 +453,24 @@ elif page == "✍️ Registrar Siniestro":
                     "ramo": ramo,
                     "monto_reclamado": monto_reclamado,
                     "cobertura": cobertura,
-                    "score_final": score_final,
-                    "descripcion": descripcion
+                    "dias_desde_inicio_poliza": dias_desde_inicio,
+                    "dias_entre_ocurrencia_reporte": dias_reporte,
+                    "historial_siniestros_asegurado": historial,
+                    "documentos_completos": docs_completos,
+                    "descripcion": descripcion,
+                    "score_riesgo_calculado": score_final
                 }
-                conclusion = st.session_state.agent.analyze_single_claim(datos_clave, alertas)
-                st.info("### Conclusión Ejecutiva (Gemini)\n" + conclusion)
+                conclusion = st.session_state.agent.analyze_single_claim(datos_clave)
+                st.success(conclusion)
+                
+                # Botón de PDF
+                pdf_bytes = generate_pdf_report("NUEVO", nivel, score_final, conclusion)
+                st.download_button(
+                    label="📄 Descargar Informe en PDF",
+                    data=pdf_bytes,
+                    file_name=f"Reporte_Siniestro_Nuevo.pdf",
+                    mime="application/pdf"
+                )
 
         # --- Guardar en Supabase (si está configurado) ---
         st.markdown("---")

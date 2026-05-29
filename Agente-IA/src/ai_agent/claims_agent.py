@@ -85,24 +85,24 @@ class ClaimsAgent:
         """Reinicia el historial del chat."""
         self.chat = self.model.start_chat(history=[])
 
-    def analyze_single_claim(self, claim_data: dict, alertas: list) -> str:
+    def analyze_single_claim(self, claim_data: dict) -> str:
         """
-        Analiza un único siniestro de forma estricta para evitar alucinaciones.
+        Analiza un único siniestro haciendo que Gemini redacte todas las alertas y la conclusión.
         """
-        prompt_estricto = (
-            "Eres un analista experto en seguros. Tu única tarea es redactar un párrafo "
-            "de conclusión sobre el siguiente caso.\n"
-            "REGLA CRÍTICA 1: NO inventes nombres, fechas, ni datos que no estén aquí.\n"
-            "REGLA CRÍTICA 2: NO uses frases como 'el cliente cometió fraude', usa 'presenta indicios de riesgo'.\n"
-            "REGLA CRÍTICA 3: Basa tu respuesta ÚNICAMENTE en las alertas proporcionadas.\n\n"
-            f"DATOS DEL SINIESTRO: {json.dumps(claim_data, ensure_ascii=False)}\n"
-            f"ALERTAS DEL SISTEMA: {json.dumps(alertas, ensure_ascii=False)}\n\n"
-            "Por favor, redacta un párrafo profesional (máx 4-5 líneas) resumiendo por qué este caso "
-            "es o no es riesgoso, y cuál sería el siguiente paso sugerido."
+        prompt = (
+            "Eres el motor central de Inteligencia Artificial (Gemini 2.5 Flash) de Aseguradora del Sur.\n"
+            "Tu tarea es analizar los datos de un siniestro y generar un reporte detallado.\n"
+            f"DATOS DEL SINIESTRO: {json.dumps(claim_data, ensure_ascii=False)}\n\n"
+            "Por favor, redacta tu análisis estructurado exactamente en dos partes:\n\n"
+            "### 🚨 Factores de Riesgo Detectados por la IA\n"
+            "(Crea una lista de viñetas mencionando las cosas sospechosas que encuentres en los datos, por ejemplo: "
+            "si los días desde inicio de póliza son muy pocos, si el monto reclamado es casi igual a la suma asegurada, "
+            "si el historial de siniestros es alto, o si faltan documentos. Si el score_riesgo_calculado es alto, menciónalo como un patrón anómalo detectado).\n\n"
+            "### 📋 Conclusión Ejecutiva\n"
+            "(Un párrafo resumiendo tu recomendación: si el caso parece un fraude o si es seguro proceder con el pago)."
         )
         try:
-            # Usamos generate_content directamente para que no se mezcle con la memoria del chat general
-            response = self.model.generate_content(prompt_estricto)
+            response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
             return f"Error generando resumen con IA: {str(e)}"
