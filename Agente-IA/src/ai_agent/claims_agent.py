@@ -92,7 +92,7 @@ class ClaimsAgent:
         prompt = (
             "Eres el motor central de Inteligencia Artificial (Gemini 2.5 Flash) de Aseguradora del Sur.\n"
             "Tu tarea es analizar los datos de un siniestro y generar un reporte detallado.\n"
-            f"DATOS DEL SINIESTRO: {json.dumps(claim_data, ensure_ascii=False)}\n\n"
+            f"DATOS DEL SINIESTRO: {str(claim_data)}\n\n"
             "Por favor, redacta tu análisis estructurado exactamente en dos partes:\n\n"
             "### 🚨 Factores de Riesgo Detectados por la IA\n"
             "(Crea una lista de viñetas mencionando las cosas sospechosas que encuentres en los datos, por ejemplo: "
