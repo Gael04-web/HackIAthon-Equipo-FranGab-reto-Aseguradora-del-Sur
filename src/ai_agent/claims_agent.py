@@ -1,8 +1,27 @@
 import os
 import json
+import requests
 import pandas as pd
 import google.generativeai as genai
 from dotenv import load_dotenv
+
+def _sb_get(table: str, select: str = "*", filters: str = "", limit: int = 500):
+    """Consulta REST directa a Supabase sin supabase-py."""
+    url = os.getenv("SUPABASE_URL", "").rstrip("/") + f"/rest/v1/{table}"
+    key = os.getenv("SUPABASE_KEY", "")
+    params = f"select={select}&limit={limit}"
+    if filters:
+        params += f"&{filters}"
+    try:
+        r = requests.get(
+            url + "?" + params,
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return []
 
 load_dotenv()
 
@@ -98,23 +117,19 @@ def get_confirmed_fraud_cases(limit: int = 15) -> list:
     Úsala para aprender de los patrones de fraude ya validados y calibrar
     tu score. Retorna los campos clave de cada caso confirmado.
     """
-    global _df, _sb
+    global _df
     limit = min(limit, 20)
-    if _sb:
-        try:
-            data = _sb.table("siniestros").select(
-                "id_siniestro,ramo,cobertura,monto_reclamado,dias_desde_inicio_poliza,"
-                "dias_desde_fin_poliza,dias_entre_ocurrencia_reporte,"
-                "historial_siniestros_asegurado,documentos_completos,descripcion"
-            ).eq("decision_analista", "Fraude Confirmado").limit(limit).execute().data
-            return data
-        except Exception:
-            pass
+    data = _sb_get(
+        "siniestros",
+        select="id_siniestro,ramo,cobertura,monto_reclamado,dias_desde_inicio_poliza,dias_desde_fin_poliza,dias_entre_ocurrencia_reporte,historial_siniestros_asegurado,documentos_completos,descripcion",
+        filters="decision_analista=eq.Fraude Confirmado",
+        limit=limit,
+    )
+    if data:
+        return data
     if not _df.empty and "decision_analista" in _df.columns:
-        cols = [
-            "id_siniestro", "ramo", "cobertura", "monto_reclamado",
-            "dias_desde_inicio_poliza", "historial_siniestros_asegurado", "descripcion",
-        ]
+        cols   = ["id_siniestro", "ramo", "cobertura", "monto_reclamado",
+                  "dias_desde_inicio_poliza", "historial_siniestros_asegurado", "descripcion"]
         frauds = _df[_df["decision_analista"] == "Fraude Confirmado"].head(limit)
         avail  = [c for c in cols if c in frauds.columns]
         return frauds[avail].to_dict("records")
@@ -127,53 +142,42 @@ def get_insured_history(id_asegurado: str) -> dict:
     Retorna total de siniestros, cuántos fueron confirmados como fraude,
     montos reclamados y estados. Úsala para detectar asegurados reincidentes.
     """
-    global _df, _sb
-    if _sb:
-        try:
-            data = _sb.table("siniestros").select(
-                "id_siniestro,ramo,monto_reclamado,estado,decision_analista,fecha_ocurrencia"
-            ).eq("id_asegurado", id_asegurado).execute().data
-            n_fraude = sum(1 for d in data if d.get("decision_analista") == "Fraude Confirmado")
-            return {
-                "total_siniestros":   len(data),
-                "fraudes_confirmados": n_fraude,
-                "siniestros_recientes": data[:10],
-            }
-        except Exception:
-            pass
+    global _df
+    data = _sb_get(
+        "siniestros",
+        select="id_siniestro,ramo,monto_reclamado,estado,decision_analista,fecha_ocurrencia",
+        filters=f"id_asegurado=eq.{id_asegurado}",
+    )
+    if data:
+        n_fraude = sum(1 for d in data if d.get("decision_analista") == "Fraude Confirmado")
+        return {"total_siniestros": len(data), "fraudes_confirmados": n_fraude, "siniestros_recientes": data[:10]}
     if not _df.empty:
         hist = _df[_df["id_asegurado"] == id_asegurado]
-        return {
-            "total_siniestros":  len(hist),
-            "montos_reclamados": hist["monto_reclamado"].tolist() if "monto_reclamado" in hist.columns else [],
-        }
+        return {"total_siniestros": len(hist),
+                "montos_reclamados": hist["monto_reclamado"].tolist() if "monto_reclamado" in hist.columns else []}
     return {"total_siniestros": 0}
 
 
 def get_provider_risk(id_proveedor: str) -> dict:
     """
     Consulta la base de datos para obtener el perfil de riesgo de un proveedor
-    (taller, clínica, médico o perito): si está en lista restrictiva, su porcentaje
-    de casos con irregularidades y el total de reclamos que ha tramitado.
+    (taller, clínica, médico o perito): si está en lista restrictiva,
+    su motivo de restricción y el total de reclamos que ha tramitado.
     """
-    global _df, _sb
-    if _sb:
-        try:
-            data = _sb.table("proveedores").select(
-                "nombre,tipo,en_lista_restrictiva,pct_casos_observados,reclamos_asociados,antiguedad_anios"
-            ).eq("id_proveedor", id_proveedor).execute().data
-            return data[0] if data else {"error": "Proveedor no encontrado"}
-        except Exception:
-            pass
+    global _df
+    data = _sb_get("proveedores",
+                   select="nombre,tipo,en_lista_restrictiva,motivo_restriccion,reclamos_asociados",
+                   filters=f"id_proveedor=eq.{id_proveedor}")
+    if data:
+        return data[0]
     if not _df.empty:
         rows = _df[_df["id_proveedor"] == id_proveedor]
         if len(rows) > 0:
             r = rows.iloc[0]
             return {
-                "nombre":                 str(r.get("nombre_proveedor", "N/A")),
-                "en_lista_restrictiva":   bool(r.get("en_lista_restrictiva", False)),
-                "pct_casos_observados":   float(r.get("pct_casos_observados", 0)),
-                "reclamos_asociados":     int(r.get("reclamos_asociados_proveedor", 0)),
+                "nombre":               str(r.get("nombre_proveedor", "N/A")),
+                "en_lista_restrictiva": bool(r.get("en_lista_restrictiva", False)),
+                "reclamos_asociados":   int(r.get("reclamos_asociados_proveedor", 0)),
             }
     return {"error": "Proveedor no encontrado"}
 
@@ -185,23 +189,13 @@ def get_top_critical_claims(limit: int = 10) -> list:
     prioritarios para revisar. Incluye id, ramo, monto, score, nivel de riesgo
     y decisión actual del analista.
     """
-    global _df, _sb
-    if _sb:
-        try:
-            data = _sb.table("siniestros").select(
-                "id_siniestro,ramo,cobertura,monto_reclamado,estado,decision_analista"
-            ).order("monto_reclamado", desc=True).limit(limit).execute().data
-            if data:
-                return data
-        except Exception:
-            pass
+    global _df
     if not _df.empty:
-        cols = ["id_siniestro", "ramo", "cobertura", "monto_reclamado",
-                "score_final", "nivel_riesgo", "decision_analista"]
+        cols  = ["id_siniestro", "ramo", "cobertura", "monto_reclamado",
+                 "score_final", "nivel_riesgo", "decision_analista"]
         avail = [c for c in cols if c in _df.columns]
         sort_col = "score_final" if "score_final" in _df.columns else "monto_reclamado"
-        top = _df.sort_values(sort_col, ascending=False).head(limit)
-        return top[avail].to_dict("records")
+        return _df.sort_values(sort_col, ascending=False).head(limit)[avail].to_dict("records")
     return []
 
 

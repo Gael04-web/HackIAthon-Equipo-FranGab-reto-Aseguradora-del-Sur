@@ -1,226 +1,235 @@
 import os
-import random
-import uuid
-from datetime import datetime, timedelta
+import json
+import requests
 import pandas as pd
-from faker import Faker
 from dotenv import load_dotenv
-from supabase import create_client, Client
 
 load_dotenv()
 
-fake = Faker('es_ES')
-
-# Configuración Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Constantes
-CIUDADES = ["Guayaquil", "Quito", "Cuenca", "Manta"]
-RAMOS_PROBS = {"Vehiculos": 0.50, "Salud": 0.20, "Vida": 0.15, "Hogar": 0.15}
-RAMOS = list(RAMOS_PROBS.keys())
-PROBS = list(RAMOS_PROBS.values())
+# Ruta al Excel del dataset real.
+# Por defecto busca en data/dataset/ dentro del proyecto.
+# Se puede sobreescribir con la variable de entorno DATASET_PATH.
+_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+DATASET_PATH = os.getenv(
+    "DATASET_PATH",
+    os.path.join(_BASE, "data", "dataset", "Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx")
+)
 
-N_ASEGURADOS = 200
-N_POLIZAS = 300
-N_PROVEEDORES = 50
-N_SINIESTROS = 500
-N_DOCUMENTOS = N_SINIESTROS * 2
 
-def generate_data():
-    print("Generando datos sintéticos...")
-    
-    # 1. Asegurados
-    asegurados = []
-    for _ in range(N_ASEGURADOS):
-        asegurados.append({
-            "id_asegurado": str(uuid.uuid4()),
-            "segmento": random.choice(["VIP", "Estandar", "Corporativo"]),
-            "antiguedad_anios": random.randint(0, 15),
-            "ciudad": random.choice(CIUDADES),
-            "num_polizas": random.randint(1, 5),
-            "reclamos_12m": random.randint(0, 3),
-            "mora_actual": random.random() < 0.1,
-            "score_cliente": round(random.uniform(50.0, 100.0), 2)
-        })
-        
-    # 2. Pólizas
-    polizas = []
-    for _ in range(N_POLIZAS):
-        asegurado = random.choice(asegurados)
-        fecha_inicio = fake.date_between(start_date='-3y', end_date='today')
-        fecha_fin = fecha_inicio + timedelta(days=365)
-        suma_asegurada = round(random.uniform(5000, 100000), 2)
-        polizas.append({
-            "id_poliza": str(uuid.uuid4()),
-            "id_asegurado": asegurado["id_asegurado"],
-            "ramo": random.choices(RAMOS, weights=PROBS, k=1)[0],
-            "fecha_inicio": fecha_inicio.isoformat(),
-            "fecha_fin": fecha_fin.isoformat(),
-            "prima": round(suma_asegurada * random.uniform(0.01, 0.05), 2),
-            "suma_asegurada": suma_asegurada,
-            "deducible": round(suma_asegurada * random.uniform(0.05, 0.1), 2),
-            "canal_venta": random.choice(["Broker", "Directo", "Digital", "Banco"]),
-            "ciudad": asegurado["ciudad"],
-            "estado_poliza": random.choice(["Activa", "Cancelada", "Vencida"])
-        })
-        
-    # 3. Proveedores
-    proveedores = []
-    for _ in range(N_PROVEEDORES):
-        es_restrictiva = random.random() < 0.15
-        pct_obs = round(random.uniform(0.31, 0.60) if es_restrictiva else random.uniform(0.0, 0.15), 2)
-        proveedores.append({
-            "id_proveedor": str(uuid.uuid4()),
-            "nombre": fake.company(),
-            "tipo": random.choice(["Taller", "Clinica", "Medico", "Perito", "Repuestos"]),
-            "ciudad": random.choice(CIUDADES),
-            "reclamos_asociados": random.randint(1, 50),
-            "monto_promedio": round(random.uniform(500, 10000), 2),
-            "pct_casos_observados": pct_obs,
-            "antiguedad_anios": random.randint(1, 20),
-            "en_lista_restrictiva": es_restrictiva
-        })
+# ---------------------------------------------------------------------------
+# Lectura del Excel
+# ---------------------------------------------------------------------------
 
-    # Narrativas fraudulentas comunes
-    narrativas_fraude = [
-        "El vehículo estaba estacionado y al salir encontré el golpe en la parte trasera.",
-        "Robo de celular al salir de la oficina por dos sujetos en moto.",
-        "Accidente en intersección, el otro vehículo no respetó la señal de pare y se dio a la fuga."
-    ]
+def load_excel() -> dict:
+    if not os.path.exists(DATASET_PATH):
+        raise FileNotFoundError(
+            f"No se encontró el dataset en:\n  {DATASET_PATH}\n"
+            "Copia el archivo Excel a esa ruta o define la variable DATASET_PATH en .env"
+        )
+    print(f"Leyendo dataset desde: {DATASET_PATH}")
+    return pd.read_excel(DATASET_PATH, sheet_name=None)
 
-    # 4. Siniestros
-    # Distribución proporcional: 15% Rojo, 20% Amarillo, 65% Verde
-    N_ROJOS = int(N_SINIESTROS * 0.15)
-    N_AMARILLOS = int(N_SINIESTROS * 0.20)
 
-    siniestros = []
-    for i in range(N_SINIESTROS):
-        poliza = random.choice(polizas)
-        fecha_inicio_pol = datetime.fromisoformat(poliza["fecha_inicio"]).date()
-        fecha_fin_pol = datetime.fromisoformat(poliza["fecha_fin"]).date()
+# ---------------------------------------------------------------------------
+# Transformaciones por tabla
+# ---------------------------------------------------------------------------
 
-        if i < N_ROJOS: # ROJOS (Fraude descarado)
-            is_fraud = True
-            dias_desde_inicio = random.randint(1, 5)
-            dias_reporte = random.randint(10, 30)
-            historial = random.randint(4, 8)
-            docs_completos = False
-            monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.95, 0.99), 2)
-            prov_malos = [p for p in proveedores if p["en_lista_restrictiva"] or p["pct_casos_observados"] > 0.3]
-            proveedor = random.choice(prov_malos) if prov_malos else random.choice(proveedores)
-            descripcion = random.choice(narrativas_fraude)
+def transform_asegurados(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy().rename(columns={
+        'ID Asegurado':                   'id_asegurado',
+        'Nombres Asegurado':              'nombre_asegurado',
+        'Segmento':                       'segmento',
+        'Ciudad':                         'ciudad',
+        'Antigüedad (años)':              'antiguedad_anios',
+        'N° Pólizas Activas':             'num_polizas',
+        'N° Reclamos Últimos 12 Meses':   'reclamos_12m',
+        'N° Reclamos Histórico Total':    'reclamos_historico_total',
+        'Reclamos RC sin Tercero':        'reclamos_rc_sin_tercero',
+        'Perfil Riesgo Histórico':        'perfil_riesgo',
+    })
+    df['nombre_asegurado']         = df['nombre_asegurado'].fillna('')
+    df['reclamos_historico_total'] = pd.to_numeric(df['reclamos_historico_total'], errors='coerce').fillna(0).astype(int)
+    df['reclamos_rc_sin_tercero']  = pd.to_numeric(df['reclamos_rc_sin_tercero'],  errors='coerce').fillna(0).astype(int)
+    return df
 
-        elif i < N_ROJOS + N_AMARILLOS: # AMARILLOS (Riesgo medio/sospechoso)
-            is_fraud = False
-            dias_desde_inicio = random.randint(10, 40)
-            dias_reporte = random.randint(5, 10)
-            historial = random.randint(2, 3)
-            docs_completos = True
-            monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.70, 0.85), 2)
-            proveedor = random.choice(proveedores)
-            descripcion = fake.text(max_nb_chars=100)
 
-        else: # VERDES (Totalmente normales)
-            is_fraud = False
-            dias_desde_inicio = random.randint(100, 300)
-            dias_reporte = random.randint(1, 3)
-            historial = random.randint(0, 1)
-            docs_completos = True
-            monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.10, 0.40), 2)
-            prov_buenos = [p for p in proveedores if not p["en_lista_restrictiva"]]
-            proveedor = random.choice(prov_buenos) if prov_buenos else random.choice(proveedores)
-            descripcion = fake.text(max_nb_chars=150)
+def transform_polizas(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy().rename(columns={
+        'ID Póliza':          'id_poliza',
+        'ID Asegurado':       'id_asegurado',
+        'Ramo':               'ramo',
+        'Fecha Inicio':       'fecha_inicio',
+        'Fecha Fin':          'fecha_fin',
+        'Suma Asegurada ($)': 'suma_asegurada',
+        'Prima Anual ($)':    'prima',
+        'Canal Venta':        'canal_venta',
+        'Estado Póliza':      'estado_poliza',
+    })
+    for col in ['fecha_inicio', 'fecha_fin']:
+        df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
+    return df
 
-        fecha_ocurrencia = fecha_inicio_pol + timedelta(days=dias_desde_inicio)
-        fecha_reporte = fecha_ocurrencia + timedelta(days=dias_reporte)
-        dias_desde_fin = (fecha_fin_pol - fecha_ocurrencia).days
-        monto_estimado = monto_reclamado * round(random.uniform(0.8, 1.0), 2)
-        monto_pagado = 0.0 # asumimos pendiente
 
-        siniestros.append({
-            "id_siniestro": str(uuid.uuid4()),
-            "id_poliza": poliza["id_poliza"],
-            "id_asegurado": poliza["id_asegurado"],
-            "id_proveedor": proveedor["id_proveedor"],
-            "ramo": poliza["ramo"],
-            "cobertura": random.choice(["Choque", "Robo", "Enfermedad", "Incendio", "RC"]),
-            "fecha_ocurrencia": fecha_ocurrencia.isoformat(),
-            "fecha_reporte": fecha_reporte.isoformat(),
-            "monto_reclamado": round(monto_reclamado, 2),
-            "monto_estimado": round(monto_estimado, 2),
-            "monto_pagado": round(monto_pagado, 2),
-            "estado": random.choice(["Reportado", "En Analisis", "Aprobado", "Rechazado"]),
-            "sucursal": random.choice(["Matriz", "Sucursal Norte", "Sucursal Sur"]),
-            "descripcion": descripcion,
-            "documentos_completos": docs_completos,
-            "beneficiario": fake.name(),
-            "dias_desde_inicio_poliza": dias_desde_inicio,
-            "dias_desde_fin_poliza": dias_desde_fin,
-            "dias_entre_ocurrencia_reporte": dias_reporte,
-            "historial_siniestros_asegurado": historial,
-            "etiqueta_fraude_simulada": 1 if is_fraud else 0
-        })
-        
-    # 5. Documentos
-    documentos = []
-    for _ in range(N_DOCUMENTOS):
-        siniestro = random.choice(siniestros)
-        documentos.append({
-            "id_documento": str(uuid.uuid4()),
-            "id_siniestro": siniestro["id_siniestro"],
-            "tipo_documento": random.choice(["Factura", "Informe Policial", "Historia Clinica", "Presupuesto"]),
-            "entregado": random.random() < 0.8,
-            "legible": random.random() < 0.9,
-            "fecha_emision": fake.date_between(start_date='-1y', end_date='today').isoformat(),
-            "inconsistencia_detectada": random.random() < 0.1,
-            "observacion": fake.sentence() if random.random() < 0.3 else ""
-        })
+def transform_proveedores(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df = df.drop(columns=[c for c in df.columns if 'Unnamed' in str(c)], errors='ignore')
+    df = df.rename(columns={
+        'ID Proveedor':            'id_proveedor',
+        'Nombre Proveedor':        'nombre',
+        'Tipo':                    'tipo',
+        'Ciudad':                  'ciudad',
+        'N° Siniestros Asociados': 'reclamos_asociados',
+        'En Lista Restrictiva':    'en_lista_restrictiva',
+        'Motivo Restricción':      'motivo_restriccion',
+        'Promedio Monto ($)':      'monto_promedio',
+    })
+    df['en_lista_restrictiva'] = df['en_lista_restrictiva'].map({'Sí': True, 'Si': True, 'No': False}).fillna(False)
+    df['motivo_restriccion']   = df['motivo_restriccion'].replace({'No': ''}).fillna('')
+    df['monto_promedio']       = pd.to_numeric(
+        df['monto_promedio'].astype(str).str.replace('—', '', regex=False), errors='coerce'
+    ).fillna(0.0)
+    return df
 
-    return asegurados, polizas, proveedores, siniestros, documentos
 
-def upload_to_supabase(data_dict):
-    try:
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("Conectado a Supabase. Subiendo datos...")
-        
-        # Limpieza previa opcional o manejo de upsert. Aquí simplemente insertamos.
-        # Orden de inserción importa por FKs
-        tables = ["asegurados", "polizas", "proveedores", "siniestros", "documentos"]
-        for table in tables:
-            print(f"Insertando {len(data_dict[table])} registros en {table}...")
-            # Supabase API limite de payload, dividir en chunks
-            chunk_size = 100
-            for i in range(0, len(data_dict[table]), chunk_size):
-                chunk = data_dict[table][i:i+chunk_size]
-                supabase.table(table).insert(chunk).execute()
-        print("Carga a Supabase completada con éxito.")
-    except Exception as e:
-        print(f"Error al subir a Supabase: {e}")
-        print("Asegúrate de que las tablas existan y las credenciales sean correctas.")
+def transform_siniestros(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy().rename(columns={
+        'ID Siniestro':                  'id_siniestro',
+        'ID Póliza':                     'id_poliza',
+        'ID Asegurado':                  'id_asegurado',
+        'Ramo':                          'ramo',
+        'Placa Vehículo Asegurado':      'placa_vehiculo',
+        'Cobertura':                     'cobertura',
+        'Fecha Ocurrencia':              'fecha_ocurrencia',
+        'Fecha Reporte':                 'fecha_reporte',
+        'Días Ocurr→Reporte':            'dias_entre_ocurrencia_reporte',
+        'Monto Reclamado ($)':           'monto_reclamado',
+        'Monto Estimado ($)':            'monto_estimado',
+        'Monto Pagado ($)':              'monto_pagado',
+        'Estado':                        'estado',
+        'Sucursal':                      'sucursal',
+        'ID Proveedor':                  'id_proveedor',
+        'Descripción del Evento':        'descripcion',
+        'Docs Completos':                'documentos_completos',
+        'Prov. Lista Restrictiva':       'en_lista_restrictiva',
+        'Días desde Inicio Póliza':      'dias_desde_inicio_poliza',
+        'Días hasta Fin Póliza':         'dias_desde_fin_poliza',
+        'N° Reclamos Previos Asegurado': 'historial_siniestros_asegurado',
+        'Suma Asegurada ($)':            'suma_asegurada',
+        'Similitud Narrativa Máx.':      'max_similarity_nlp',
+        'Número Parte Policial':         'numero_parte_policial',
+    })
 
-def save_to_csv(siniestros):
-    os.makedirs("data/synthetic", exist_ok=True)
-    df = pd.DataFrame(siniestros)
-    path = "data/synthetic/siniestros.csv"
-    df.to_csv(path, index=False)
-    print(f"Siniestros guardados localmente en {path}")
+    # Booleanos
+    df['documentos_completos'] = df['documentos_completos'].map({'Sí': True, 'Si': True, 'No': False}).fillna(False)
+    df['en_lista_restrictiva'] = df['en_lista_restrictiva'].map({'Sí': True, 'Si': True, 'No': False}).fillna(False)
+
+    # Fechas
+    for col in ['fecha_ocurrencia', 'fecha_reporte']:
+        df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
+
+    # Nulos
+    df['placa_vehiculo']        = df['placa_vehiculo'].fillna('')
+    df['numero_parte_policial'] = df['numero_parte_policial'].fillna('')
+    df['descripcion']           = df['descripcion'].fillna('')
+    df['max_similarity_nlp']    = pd.to_numeric(df['max_similarity_nlp'], errors='coerce').fillna(0.0)
+    df['monto_pagado']          = pd.to_numeric(df['monto_pagado'], errors='coerce').fillna(0.0)
+
+    # Decisión analista vacía al inicio
+    df['decision_analista'] = 'Pendiente'
+
+    return df
+
+
+def transform_documentos(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy().rename(columns={
+        'ID Documento':       'id_documento',
+        'ID Siniestro':       'id_siniestro',
+        'Tipo Documento':     'tipo_documento',
+        'Nombre Archivo PDF': 'nombre_archivo',
+    })
+    df['nombre_archivo'] = df['nombre_archivo'].fillna('')
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Carga a Supabase
+# ---------------------------------------------------------------------------
+
+def upload_to_supabase(data_dict: dict):
+    """Sube datos a Supabase usando la REST API directamente (sin supabase-py)."""
+    base_url = SUPABASE_URL.rstrip('/') + "/rest/v1/"
+    headers  = {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=minimal",
+    }
+
+    print("Conectado a Supabase. Subiendo datos...")
+    order      = ['asegurados', 'polizas', 'proveedores', 'siniestros', 'documentos']
+    chunk_size = 100
+
+    for table in order:
+        records = data_dict[table]
+        print(f"  Insertando {len(records)} registros en '{table}'...")
+        for i in range(0, len(records), chunk_size):
+            chunk = records[i:i + chunk_size]
+            resp  = requests.post(
+                base_url + table,
+                data=json.dumps(chunk, default=str),
+                headers=headers,
+                timeout=30,
+            )
+            if not resp.ok:
+                print(f"  Error en '{table}' chunk {i}: {resp.status_code} — {resp.text[:200]}")
+                resp.raise_for_status()
+
+    print("Carga a Supabase completada con éxito.")
+
+
+# ---------------------------------------------------------------------------
+# Backup CSV
+# ---------------------------------------------------------------------------
+
+def save_csv(df: pd.DataFrame):
+    out = os.path.join(_BASE, "data", "synthetic", "siniestros.csv")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    df.to_csv(out, index=False)
+    print(f"CSV guardado en: {out}")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    asegurados, polizas, proveedores, siniestros, documentos = generate_data()
-    
-    # Backup CSV
-    save_to_csv(siniestros)
-    
-    # Supabase (si está configurado)
+    sheets = load_excel()
+
+    df_aseg = transform_asegurados(sheets['3_Asegurados'])
+    df_pol  = transform_polizas(sheets['2_Polizas'])
+    df_prov = transform_proveedores(sheets['4_Proveedores'])
+    df_sin  = transform_siniestros(sheets['1_Siniestros'])
+    df_docs = transform_documentos(sheets['5_Documentos'])
+
+    print(f"\nResumen del dataset:")
+    print(f"  Asegurados : {len(df_aseg)}")
+    print(f"  Pólizas    : {len(df_pol)}")
+    print(f"  Proveedores: {len(df_prov)}")
+    print(f"  Siniestros : {len(df_sin)}")
+    print(f"  Documentos : {len(df_docs)}")
+
+    save_csv(df_sin)
+
     if SUPABASE_URL and SUPABASE_KEY and "your_" not in SUPABASE_KEY:
-        data_dict = {
-            "asegurados": asegurados,
-            "polizas": polizas,
-            "proveedores": proveedores,
-            "siniestros": siniestros,
-            "documentos": documentos
-        }
-        upload_to_supabase(data_dict)
+        upload_to_supabase({
+            'asegurados': df_aseg.to_dict('records'),
+            'polizas':    df_pol.to_dict('records'),
+            'proveedores': df_prov.to_dict('records'),
+            'siniestros': df_sin.to_dict('records'),
+            'documentos': df_docs.to_dict('records'),
+        })
     else:
-        print("Credenciales de Supabase no configuradas. Saltando subida a BD.")
+        print("Credenciales de Supabase no configuradas. Solo se guardó el CSV local.")

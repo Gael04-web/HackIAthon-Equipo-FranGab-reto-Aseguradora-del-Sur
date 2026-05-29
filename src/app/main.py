@@ -1,11 +1,12 @@
 import sys
 import os
 import uuid
+import json
+import requests
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import date
-from supabase import create_client, Client
 from dotenv import load_dotenv
 from fpdf import FPDF
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -23,19 +24,37 @@ load_dotenv()
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _sb_headers():
+    key = os.getenv("SUPABASE_KEY", "")
+    return {
+        "apikey":        key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type":  "application/json",
+    }
+
+def _sb_url(table: str, params: str = "") -> str:
+    base = os.getenv("SUPABASE_URL", "").rstrip("/") + f"/rest/v1/{table}"
+    return base + (f"?{params}" if params else "")
+
+def _sb_configured() -> bool:
+    url = os.getenv("SUPABASE_URL", "")
+    key = os.getenv("SUPABASE_KEY", "")
+    return bool(url and key and "your_" not in key)
+
 def get_supabase_client():
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
-    if url and key and "your_" not in key:
-        return create_client(url, key)
-    return None
+    """Compatibilidad — devuelve True si Supabase está configurado."""
+    return _sb_configured() or None
 
 def guardar_decision_supabase(id_siniestro: str, decision: str):
     """Persiste la decisión en Supabase y actualiza el estado local sin reentrenar."""
-    sb = get_supabase_client()
-    if sb:
+    if _sb_configured():
         try:
-            sb.table("siniestros").update({"decision_analista": decision}).eq("id_siniestro", id_siniestro).execute()
+            requests.patch(
+                _sb_url("siniestros", f"id_siniestro=eq.{id_siniestro}"),
+                data=json.dumps({"decision_analista": decision}),
+                headers=_sb_headers(),
+                timeout=10,
+            ).raise_for_status()
         except Exception as e:
             st.warning(f"No se pudo guardar en Supabase: {e}")
     if "decisions" not in st.session_state:
@@ -79,19 +98,28 @@ def load_data():
     key = os.getenv("SUPABASE_KEY")
 
     df_siniestros = None
-    if url and key and "your_" not in key:
+    if _sb_configured():
         try:
-            supabase: Client = create_client(url, key)
-            sin  = supabase.table("siniestros").select("*").execute().data
-            prov = supabase.table("proveedores").select(
-                "id_proveedor,nombre,en_lista_restrictiva,pct_casos_observados,reclamos_asociados"
-            ).execute().data
+            def sb_get(table, select="*", limit=2000):
+                r = requests.get(
+                    _sb_url(table, f"select={select}&limit={limit}"),
+                    headers=_sb_headers(), timeout=20
+                )
+                r.raise_for_status()
+                return r.json()
 
-            df_sin  = pd.DataFrame(sin)
-            df_prov = pd.DataFrame(prov)
+            sin  = sb_get("siniestros")
+            prov = sb_get("proveedores", "id_proveedor,nombre,en_lista_restrictiva,motivo_restriccion,reclamos_asociados")
+            aseg = sb_get("asegurados",  "id_asegurado,nombre_asegurado,perfil_riesgo")
+
+            df_sin       = pd.DataFrame(sin)
+            df_prov      = pd.DataFrame(prov)
+            df_aseg_mini = pd.DataFrame(aseg)
+
             df_prov = df_prov.rename(columns={
-                'nombre': 'nombre_proveedor',
-                'reclamos_asociados': 'reclamos_asociados_proveedor'
+                'nombre':             'nombre_proveedor',
+                'reclamos_asociados': 'reclamos_asociados_proveedor',
+                'motivo_restriccion': 'motivo_restriccion_proveedor',
             })
 
             if 'decision_analista' not in df_sin.columns:
@@ -101,6 +129,8 @@ def load_data():
 
             if not df_sin.empty and not df_prov.empty:
                 df_siniestros = df_sin.merge(df_prov, on="id_proveedor", how="left")
+                if not df_aseg_mini.empty:
+                    df_siniestros = df_siniestros.merge(df_aseg_mini, on="id_asegurado", how="left")
         except Exception as e:
             st.warning(f"Error conectando a Supabase ({e}). Usando datos locales.")
 
@@ -110,9 +140,17 @@ def load_data():
             df_siniestros = pd.read_csv(csv_path)
             if 'en_lista_restrictiva' not in df_siniestros.columns:
                 df_siniestros['en_lista_restrictiva'] = False
-                df_siniestros['pct_casos_observados'] = 0.0
                 df_siniestros['reclamos_asociados_proveedor'] = 0
                 df_siniestros['nombre_proveedor'] = "Proveedor Fallback"
+                df_siniestros['motivo_restriccion_proveedor'] = ''
+            if 'nombre_asegurado' not in df_siniestros.columns:
+                df_siniestros['nombre_asegurado'] = ''
+            if 'perfil_riesgo' not in df_siniestros.columns:
+                df_siniestros['perfil_riesgo'] = ''
+            if 'placa_vehiculo' not in df_siniestros.columns:
+                df_siniestros['placa_vehiculo'] = ''
+            if 'numero_parte_policial' not in df_siniestros.columns:
+                df_siniestros['numero_parte_policial'] = ''
             if 'decision_analista' not in df_siniestros.columns:
                 df_siniestros['decision_analista'] = 'Pendiente'
         else:
@@ -245,11 +283,31 @@ elif page == "Detalle de Siniestro":
         c1, c2 = st.columns([2, 1])
         with c1:
             st.subheader("Datos del Siniestro")
-            st.write(f"**Asegurado ID:** {row.get('id_asegurado', 'N/A')}")
-            st.write(f"**Ramo:** {row.get('ramo', 'N/A')} | **Cobertura:** {row.get('cobertura', 'N/A')}")
-            st.write(f"**Fecha Ocurrencia:** {row.get('fecha_ocurrencia', 'N/A')} | **Fecha Reporte:** {row.get('fecha_reporte', 'N/A')}")
-            st.write(f"**Monto Reclamado:** ${row.get('monto_reclamado', 0):,.2f}")
-            st.write(f"**Proveedor:** {row.get('nombre_proveedor', row.get('id_proveedor', 'N/A'))}")
+
+            nombre_aseg  = row.get('nombre_asegurado', '') or row.get('id_asegurado', 'N/A')
+            perfil_riesgo = row.get('perfil_riesgo', '')
+            perfil_badge = {"Alto": "🔴 Alto", "Medio": "🟡 Medio", "Bajo": "🟢 Bajo"}.get(perfil_riesgo, perfil_riesgo)
+
+            st.write(f"**Asegurado:** {nombre_aseg}  |  Perfil histórico: {perfil_badge}")
+            st.write(f"**Ramo:** {row.get('ramo', 'N/A')}  |  **Cobertura:** {row.get('cobertura', 'N/A')}")
+
+            placa = row.get('placa_vehiculo', '')
+            if placa:
+                st.write(f"**Placa vehículo:** {placa}")
+
+            st.write(f"**Fecha Ocurrencia:** {row.get('fecha_ocurrencia', 'N/A')}  |  **Fecha Reporte:** {row.get('fecha_reporte', 'N/A')}")
+            st.write(f"**Monto Reclamado:** ${row.get('monto_reclamado', 0):,.2f}  |  **Estimado:** ${row.get('monto_estimado', 0):,.2f}")
+            st.write(f"**Estado:** {row.get('estado', 'N/A')}  |  **Sucursal:** {row.get('sucursal', 'N/A')}")
+
+            nombre_prov = row.get('nombre_proveedor', row.get('id_proveedor', 'N/A'))
+            motivo_prov = row.get('motivo_restriccion_proveedor', '')
+            prov_str    = nombre_prov + (f"  ⚠️ *{motivo_prov}*" if motivo_prov else "")
+            st.write(f"**Proveedor:** {prov_str}")
+
+            parte = row.get('numero_parte_policial', '')
+            if parte:
+                st.write(f"**N° Parte Policial:** {parte}")
+
             st.write(f"**Descripción:** {row.get('descripcion', 'N/A')}")
         with c2:
             st.subheader("Evaluación de Riesgo")
@@ -607,8 +665,7 @@ elif page == "✍️ Registrar Siniestro":
         )
 
         st.markdown("---")
-        sb = get_supabase_client()
-        if sb:
+        if _sb_configured():
             if st.button("💾 Guardar siniestro en Supabase"):
                 try:
                     nuevo_id = str(uuid.uuid4())
@@ -623,15 +680,20 @@ elif page == "✍️ Registrar Siniestro":
                         "estado":                         r['estado'],
                         "descripcion":                    r['descripcion'],
                         "documentos_completos":           r['docs_completos'],
-                        "beneficiario":                   r['beneficiario'],
                         "dias_desde_inicio_poliza":       r['dias_desde_inicio'],
                         "dias_desde_fin_poliza":          r['dias_desde_fin'],
                         "dias_entre_ocurrencia_reporte":  r['dias_reporte'],
                         "historial_siniestros_asegurado": 0,
-                        "etiqueta_fraude_simulada":       0,
                         "monto_pagado":                   0.0,
+                        "decision_analista":              "Pendiente",
                     }
-                    sb.table("siniestros").insert(nuevo_registro).execute()
+                    resp = requests.post(
+                        _sb_url("siniestros"),
+                        data=json.dumps(nuevo_registro, default=str),
+                        headers={**_sb_headers(), "Prefer": "return=minimal"},
+                        timeout=15,
+                    )
+                    resp.raise_for_status()
                     st.success(f"✅ Siniestro guardado con ID: `{nuevo_id[:8]}...`")
                     del st.session_state['registrar_result']
                     load_data.clear()
