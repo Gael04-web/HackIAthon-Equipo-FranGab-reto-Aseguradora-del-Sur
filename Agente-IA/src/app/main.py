@@ -290,28 +290,34 @@ elif page == "Inspector FRAUDIA (Asistente)":
 
 elif page == "Métricas del Modelo":
     st.title("📊 Rendimiento del Modelo Predictivo")
-    st.write("Métricas del Random Forest evaluado en los datos etiquetados (simulados).")
+    st.write("Auditoría de calidad: métricas del modelo de Machine Learning evaluado contra el historial del portafolio.")
     
     metrics = model.get_metrics()
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Precision", f"{metrics.get('precision', 0):.3f}")
-    col2.metric("Recall", f"{metrics.get('recall', 0):.3f}")
-    col3.metric("F1 Score", f"{metrics.get('f1', 0):.3f}")
-    col4.metric("AUC-ROC", f"{metrics.get('auc_roc', 0):.3f}")
+    col1.metric("Precision", f"{metrics.get('precision', 0):.3f}", 
+                help="De todos los casos que la IA acusó de fraude, ¿cuántos eran realmente fraude? (Evita falsas alarmas).")
+    col2.metric("Recall", f"{metrics.get('recall', 0):.3f}",
+                help="De todos los fraudes reales que existían en la base, ¿cuántos logró detectar la IA? (Mide su capacidad de atrapar estafadores).")
+    col3.metric("F1 Score", f"{metrics.get('f1', 0):.3f}",
+                help="El promedio equilibrado entre Precision y Recall. Es la nota más importante en detección de fraudes.")
+    col4.metric("AUC-ROC", f"{metrics.get('auc_roc', 0):.3f}",
+                help="Capacidad de la IA para distinguir entre un cliente honesto y uno fraudulento (1.0 es la nota perfecta).")
     
     st.markdown("---")
     
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Feature Importance")
+        st.subheader("Variables Más Influyentes (Feature Importance)", 
+                     help="Muestra en qué datos se fija más el cerebro de la IA para tomar su decisión. Las barras más largas son los factores de mayor riesgo histórico.")
         fi = model.get_feature_importances()
         fig_fi = px.bar(fi.head(10), x='importance', y='feature', orientation='h')
         fig_fi.update_layout(yaxis={'categoryorder':'total ascending'})
         st.plotly_chart(fig_fi, use_container_width=True)
         
     with c2:
-        st.subheader("Matriz de Confusión")
+        st.subheader("Matriz de Confusión",
+                     help="Compara la realidad vs. la predicción de la IA. Lo ideal es que los números más altos estén en los cuadrantes de 'acierto' (Real Normal -> Pred Normal).")
         cm = metrics.get('confusion_matrix', [[0,0],[0,0]])
         cm_df = pd.DataFrame(cm, index=['Real Normal', 'Real Fraude'], columns=['Pred Normal', 'Pred Fraude'])
         st.dataframe(cm_df, use_container_width=True)
