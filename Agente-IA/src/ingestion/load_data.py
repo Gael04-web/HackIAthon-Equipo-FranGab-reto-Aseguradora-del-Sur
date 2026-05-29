@@ -25,7 +25,7 @@ N_ASEGURADOS = 200
 N_POLIZAS = 300
 N_PROVEEDORES = 50
 N_SINIESTROS = 500
-N_DOCUMENTOS = 20
+N_DOCUMENTOS = N_SINIESTROS * 2
 
 def generate_data():
     print("Generando datos sintéticos...")
@@ -90,14 +90,17 @@ def generate_data():
     ]
 
     # 4. Siniestros
+    # Distribución proporcional: 15% Rojo, 20% Amarillo, 65% Verde
+    N_ROJOS = int(N_SINIESTROS * 0.15)
+    N_AMARILLOS = int(N_SINIESTROS * 0.20)
+
     siniestros = []
     for i in range(N_SINIESTROS):
         poliza = random.choice(polizas)
         fecha_inicio_pol = datetime.fromisoformat(poliza["fecha_inicio"]).date()
         fecha_fin_pol = datetime.fromisoformat(poliza["fecha_fin"]).date()
-        
-        # Lógica de distribución forzada para la DEMO (3 Rojos, 2 Amarillos, 5 Verdes)
-        if i < 3: # ROJOS (Fraude descarado)
+
+        if i < N_ROJOS: # ROJOS (Fraude descarado)
             is_fraud = True
             dias_desde_inicio = random.randint(1, 5)
             dias_reporte = random.randint(10, 30)
@@ -107,8 +110,8 @@ def generate_data():
             prov_malos = [p for p in proveedores if p["en_lista_restrictiva"] or p["pct_casos_observados"] > 0.3]
             proveedor = random.choice(prov_malos) if prov_malos else random.choice(proveedores)
             descripcion = random.choice(narrativas_fraude)
-            
-        elif i < 5: # AMARILLOS (Riesgo medio/sospechoso)
+
+        elif i < N_ROJOS + N_AMARILLOS: # AMARILLOS (Riesgo medio/sospechoso)
             is_fraud = False
             dias_desde_inicio = random.randint(10, 40)
             dias_reporte = random.randint(5, 10)
@@ -117,7 +120,7 @@ def generate_data():
             monto_reclamado = poliza["suma_asegurada"] * round(random.uniform(0.70, 0.85), 2)
             proveedor = random.choice(proveedores)
             descripcion = fake.text(max_nb_chars=100)
-            
+
         else: # VERDES (Totalmente normales)
             is_fraud = False
             dias_desde_inicio = random.randint(100, 300)

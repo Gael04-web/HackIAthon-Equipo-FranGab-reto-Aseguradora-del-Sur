@@ -18,7 +18,7 @@ class FraudModelPipeline:
         if 'en_lista_restrictiva' in self.df.columns:
             self.df['en_lista_restrictiva_num'] = self.df['en_lista_restrictiva'].astype(int)
             
-        self.tfidf = TfidfVectorizer(stop_words='english')
+        self.tfidf = TfidfVectorizer(stop_words=None)
         self.rf = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42)
         self.iso = IsolationForest(contamination=0.15, random_state=42)
         
