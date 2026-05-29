@@ -170,27 +170,46 @@ No es fine-tuning. El agente aprende por recuperación: cada vez que analiza un 
 
 ## Estructura del proyecto
 
+Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el núcleo del sistema, incluyendo el agente de IA.
+
 ```
-Agente-IA/
 ├── src/
-│   ├── app/            → Aplicación Streamlit (main.py)
-│   ├── ingestion/      → Generador de datos sintéticos
-│   ├── models/         → Pipeline ML (Random Forest, Isolation Forest, NLP)
-│   ├── rules/          → Motor de reglas antifraude (RF-01 a RF-08)
-│   ├── ai_agent/       → Agente Gemini con 9 tools y loop agéntico
-│   └── explainability/ → Explicaciones legibles del score ML
+│   ├── ai_agent/
+│   │   └── claims_agent.py   → AGENTE IA: Gemini 2.5 Flash con 9 tools y loop agéntico.
+│   │                            Aquí está toda la lógica de consulta a Supabase, aprendizaje
+│   │                            de fraudes confirmados y scoring autónomo por demanda.
+│   │
+│   ├── app/
+│   │   └── main.py           → Aplicación Streamlit: Dashboard, Detalle, Inspector FRAUDIA,
+│   │                            Métricas y Registrar Siniestro.
+│   │
+│   ├── models/
+│   │   └── fraud_model.py    → Pipeline ML batch: TF-IDF NLP, Random Forest, Isolation Forest.
+│   │                            Genera el score_ml para los 500 siniestros del portafolio.
+│   │
+│   ├── rules/
+│   │   └── fraud_rules.py    → Motor de reglas: 8 reglas antifraude codificadas por expertos
+│   │                            (RF-01 a RF-08). También las usa el agente como tool.
+│   │
+│   └── explainability/
+│       └── explain_score.py  → Genera explicaciones legibles del score ML para el analista.
+│
 ├── data/
-│   └── synthetic/      → CSV local de siniestros (fallback sin Supabase)
+│   └── synthetic/
+│       └── siniestros.csv    → 500 siniestros de ejemplo listos para usar como demo.
+│
 ├── docs/
-│   ├── schema.sql      → Script SQL para crear las tablas en Supabase
-│   ├── arquitectura.md → Diagrama y descripción del sistema
-│   ├── modelo_datos.md → Esquema detallado de tablas y campos
-│   ├── uso_ia.md       → Documentación completa de IA y tools del agente
-│   └── reglas_negocio.md → Catálogo de las 8 reglas antifraude
+│   ├── schema.sql            → Script SQL para crear las tablas en Supabase
+│   ├── arquitectura.md       → Diagrama y descripción completa del sistema
+│   ├── modelo_datos.md       → Esquema detallado de tablas y campos
+│   ├── uso_ia.md             → Documentación del agente, sus 9 tools y cómo aprende
+│   └── reglas_negocio.md     → Catálogo de las 8 reglas antifraude con condiciones y puntos
+│
 ├── tests/
-│   └── test_rules.py   → Tests unitarios del motor de reglas
-├── .env.example        → Plantilla de variables de entorno
-├── requirements.txt    → Dependencias del proyecto
+│   └── test_rules.py         → Tests unitarios del motor de reglas
+│
+├── .env.example              → Plantilla de variables de entorno
+├── requirements.txt          → Dependencias del proyecto
 └── README.md
 ```
 
