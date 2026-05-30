@@ -290,11 +290,24 @@ MARCAS_MODELOS = {
     'Nissan':    ['Frontier', 'Sentra', 'X-Trail', 'Kicks', 'Versa'],
     'Mazda':     ['CX-5', 'Mazda 3', 'Mazda 6', 'BT-50', 'CX-30'],
 }
-NOMBRES_BENEFICIARIOS = [
-    "García Morales Luis", "Pérez Vásquez Ana", "Torres Espinoza Carlos",
-    "Rodríguez Cárdenas María", "López Herrera Pedro", "Castillo Vargas Rosa",
-    "Mendoza Alvarado Jorge", "Ramos Flores Isabel", "Cabrera Ortega Diego",
-    "Vásquez Muñoz Patricia", "Salazar Reyes Andrés", "Mora Jiménez Carmen",
+# Pools para generar nombres de beneficiarios mayormente únicos
+_APELLIDOS = [
+    "García", "Pérez", "Torres", "Rodríguez", "López", "Castillo", "Mendoza",
+    "Ramos", "Cabrera", "Vásquez", "Salazar", "Mora", "Jiménez", "Herrera",
+    "Vargas", "Espinoza", "Cárdenas", "Flores", "Ortega", "Muñoz", "Reyes",
+    "Alvarado", "Morales", "Bravo", "Castro", "Guerrero", "Paredes", "Andrade",
+]
+_NOMBRES = [
+    "Luis", "Ana", "Carlos", "María", "Pedro", "Rosa", "Jorge", "Isabel",
+    "Diego", "Patricia", "Andrés", "Carmen", "Fernando", "Lucía", "Roberto",
+    "Sofía", "Manuel", "Elena", "Javier", "Gabriela", "Ricardo", "Daniela",
+]
+
+# 3 beneficiarios "fraude" que se repetirán en varios siniestros (señal RF-11)
+BENEFICIARIOS_FRAUDE = [
+    "Sandoval Pinto Ángel",
+    "Cevallos Bonilla Marco",
+    "Tobar Quinteros Wilson",
 ]
 
 def _rand_chasis() -> str:
@@ -356,15 +369,19 @@ def generate_vehiculos(df_sin: pd.DataFrame) -> tuple:
             'motor':        motor,
         })
 
-    # Asignar beneficiarios (algunos repetidos en casos de fraude)
-    beneficiario_fraude = NOMBRES_BENEFICIARIOS[0]
-    for i, idx in enumerate(sin_df.index):
-        row = sin_df.loc[idx]
-        # Casos con score alto (primeros 75) reciben beneficiario repetido
-        if i < 75 and random.random() < 0.3:
-            sin_df.at[idx, 'beneficiario'] = beneficiario_fraude
+    # Asignar beneficiarios: la GRAN MAYORÍA únicos, solo un ~6% comparte
+    # uno de los 3 beneficiarios fraude (para que RF-11 discrimine de verdad).
+    idx_all = sin_df.index.tolist()
+    n_fraude = int(len(idx_all) * 0.06)  # ~30 siniestros con beneficiario repetido
+    idx_benef_fraude = set(random.sample(idx_all, n_fraude))
+
+    for idx in idx_all:
+        if idx in idx_benef_fraude:
+            sin_df.at[idx, 'beneficiario'] = random.choice(BENEFICIARIOS_FRAUDE)
         else:
-            sin_df.at[idx, 'beneficiario'] = random.choice(NOMBRES_BENEFICIARIOS)
+            # Nombre único: apellido + apellido + nombre
+            nombre = f"{random.choice(_APELLIDOS)} {random.choice(_APELLIDOS)} {random.choice(_NOMBRES)}"
+            sin_df.at[idx, 'beneficiario'] = nombre
 
     df_veh = pd.DataFrame(vehiculos)
     return df_veh, sin_df
@@ -374,11 +391,27 @@ def generate_vehiculos(df_sin: pd.DataFrame) -> tuple:
 # Backup CSV
 # ---------------------------------------------------------------------------
 
-def save_csv(df: pd.DataFrame):
+def save_csv(df_sin: pd.DataFrame, df_veh: pd.DataFrame = None, df_aseg: pd.DataFrame = None):
+    """
+    Guarda el CSV de fallback ENRIQUECIDO: une los datos de vehículo
+    (chasis, motor, marca...) y del asegurado (perfil_riesgo,
+    reclamos_rc_sin_tercero) para que el modo local tenga las mismas
+    columnas que el modo Supabase y todas las reglas funcionen.
+    """
+    df = df_sin.copy()
+
+    if df_veh is not None and not df_veh.empty:
+        veh_cols = df_veh[['id_siniestro', 'chasis', 'motor', 'marca', 'modelo', 'anio']]
+        df = df.merge(veh_cols, on='id_siniestro', how='left')
+
+    if df_aseg is not None and not df_aseg.empty:
+        aseg_cols = df_aseg[['id_asegurado', 'perfil_riesgo', 'reclamos_rc_sin_tercero']]
+        df = df.merge(aseg_cols, on='id_asegurado', how='left')
+
     out = os.path.join(_BASE, "data", "synthetic", "siniestros.csv")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     df.to_csv(out, index=False)
-    print(f"CSV guardado en: {out}")
+    print(f"CSV guardado en: {out}  ({len(df.columns)} columnas)")
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +438,7 @@ if __name__ == "__main__":
     print(f"  Vehículos  : {len(df_veh)}")
     print(f"  Documentos : {len(df_docs)}")
 
-    save_csv(df_sin)
+    save_csv(df_sin, df_veh, df_aseg)
 
     if SUPABASE_URL and SUPABASE_KEY and "your_" not in SUPABASE_KEY:
         df_docs = upload_pdfs_to_storage(df_docs)
