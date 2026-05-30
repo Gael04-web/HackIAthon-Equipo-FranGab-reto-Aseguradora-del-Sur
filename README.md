@@ -1,5 +1,11 @@
 # Fraudia Claims — Detección de Fraude en Siniestros
 
+> ## 🚀 Prueba la app en vivo: **[frangab-aseguradora-del-sur.autprosoft.com](https://frangab-aseguradora-del-sur.autprosoft.com/)**
+>
+> No necesitas instalar nada — entra al link y explora el sistema completo funcionando.
+
+---
+
 Proyecto desarrollado para el HackIAthon de Aseguradora del Sur. La idea nació de un problema real: los analistas de siniestros reciben decenas de casos al día y es imposible revisar cada uno con el mismo nivel de atención. Fraudia Claims le da a cada analista un segundo par de ojos — uno que nunca se cansa, que consulta la base de datos en tiempo real y que aprende de cada fraude que el equipo confirma.
 
 La app combina un pipeline de machine learning para clasificar el portafolio completo con un agente de IA (Gemini 2.5 Flash) que analiza casos individuales en profundidad, tiene acceso directo a Supabase y se vuelve más preciso conforme los analistas van tomando decisiones.
@@ -162,7 +168,13 @@ El script hace tres cosas:
 
 ## Ejecutar la aplicación
 
-### Opción A — Local (desarrollo)
+### Opción A — En vivo (sin instalar nada) ⭐
+
+La app ya está desplegada y lista para usar:
+
+### 👉 **[frangab-aseguradora-del-sur.autprosoft.com](https://frangab-aseguradora-del-sur.autprosoft.com/)**
+
+### Opción B — Local (desarrollo)
 
 ```bash
 streamlit run src/app/main.py
@@ -170,7 +182,7 @@ streamlit run src/app/main.py
 
 Se abre en `http://localhost:8501`. La primera carga tarda 5-15 segundos porque entrena los modelos ML con los datos de Supabase.
 
-### Opción B — Docker (producción)
+### Opción C — Docker (producción)
 
 ```bash
 docker-compose up --build
@@ -313,3 +325,7 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 ## Equipo
 
 Desarrollado por **FranGab** para el HackIAthon — Aseguradora del Sur.
+
+---
+
+### 🚀 Prueba la app en vivo: **[frangab-aseguradora-del-sur.autprosoft.com](https://frangab-aseguradora-del-sur.autprosoft.com/)**
