@@ -108,6 +108,14 @@ class FraudModelPipeline:
         else:
             self.df['beneficiario_en_otros_siniestros'] = 0
 
+        # Reclamos RC sin tercero (campo del asegurado) — limpiar nulos para RF-12/RF-13
+        if 'reclamos_rc_sin_tercero' in self.df.columns:
+            self.df['reclamos_rc_sin_tercero'] = pd.to_numeric(
+                self.df['reclamos_rc_sin_tercero'], errors='coerce'
+            ).fillna(0).astype(int)
+        else:
+            self.df['reclamos_rc_sin_tercero'] = 0
+
     def _run_rules(self):
         """Calcula score_reglas para cada siniestro."""
         from src.rules.fraud_rules import calculate_rule_score

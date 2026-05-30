@@ -17,7 +17,7 @@ La app combina un pipeline de machine learning para clasificar el portafolio com
 **Agente Gemini (análisis profundo por demanda):**
 - Consulta Supabase en tiempo real: historial del asegurado, perfil del proveedor, casos similares
 - Lee los fraudes ya confirmados por analistas humanos y aprende de sus patrones
-- Decide autónomamente qué información necesita (9 herramientas disponibles)
+- Decide autónomamente qué información necesita (12 herramientas disponibles)
 - Produce su propio score independiente con justificación detallada
 - Responde preguntas libres sobre el portafolio en el chat del Inspector FRAUDIA
 
@@ -229,7 +229,7 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 ```
 ├── src/
 │   ├── ai_agent/
-│   │   └── claims_agent.py   → AGENTE IA: Gemini 2.5 Flash con 9 tools y loop agéntico.
+│   │   └── claims_agent.py   → AGENTE IA: Gemini 2.5 Flash con 12 tools y loop agéntico.
 │   │                            Aquí está toda la lógica de consulta a Supabase, aprendizaje
 │   │                            de fraudes confirmados y scoring autónomo por demanda.
 │   │
@@ -263,8 +263,9 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 │   ├── schema.sql            → Script SQL para crear las tablas en Supabase
 │   ├── arquitectura.md       → Diagrama y descripción completa del sistema
 │   ├── modelo_datos.md       → Esquema detallado de tablas y campos
-│   ├── uso_ia.md             → Documentación del agente, sus 9 tools y cómo aprende
-│   └── reglas_negocio.md     → Catálogo de las 8 reglas antifraude con condiciones y puntos
+│   ├── uso_ia.md             → Documentación del agente, sus 12 tools y cómo aprende
+│   ├── reglas_negocio.md     → Catálogo de las 13 reglas antifraude con condiciones y puntos
+│   └── limitaciones.md       → Limitaciones, falsos positivos, sesgos y alcance no decisorio
 │
 ├── tests/
 │   └── test_rules.py         → Tests unitarios del motor de reglas
@@ -282,7 +283,7 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 |-----------|-----------|
 | Frontend | Streamlit + Plotly |
 | Pipeline ML | scikit-learn — Random Forest, Isolation Forest, TF-IDF |
-| Agente IA | Google Gemini 2.5 Flash con function calling (9 tools) |
+| Agente IA | Google Gemini 2.5 Flash con function calling (12 tools) |
 | Base de datos | Supabase (PostgreSQL) via REST API |
 | Generación de reportes | fpdf2 |
 | Dataset | Excel real — 500 siniestros Ecuador (`openpyxl`) |

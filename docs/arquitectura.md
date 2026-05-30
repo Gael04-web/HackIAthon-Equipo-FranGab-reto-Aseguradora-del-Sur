@@ -21,7 +21,7 @@ Fraudia Claims es una plataforma antifraude para Aseguradora del Sur. Combina un
 │   PIPELINE ML     │            │         AGENTE GEMINI               │
 │  fraud_model.py   │            │       claims_agent.py               │
 │                   │            │                                     │
-│  TF-IDF NLP       │            │  9 tools que Gemini invoca solo:    │
+│  TF-IDF NLP       │            │  12 tools que Gemini invoca solo:   │
 │  Random Forest    │            │  ├─ apply_business_rules            │
 │  Isolation Forest │            │  ├─ search_similar_claims           │
 │  Motor de Reglas  │            │  ├─ get_confirmed_fraud_cases       │
@@ -165,22 +165,26 @@ A través de recuperación: `get_confirmed_fraud_cases()` lee los casos validado
 ## Estructura de Directorios
 
 ```
-Agente-IA/
+proyecto/
 ├── src/
 │   ├── app/            → Streamlit entry point (main.py)
-│   ├── ingestion/      → Generación y carga de datos sintéticos
+│   ├── ingestion/      → Carga del dataset real y subida a Supabase
 │   ├── models/         → Pipeline ML (RF, IF, NLP)
-│   ├── rules/          → Motor de reglas antifraude (RF-01 a RF-08)
-│   ├── ai_agent/       → Agente Gemini con 9 tools y loop agéntico
-│   └── explainability/ → Explicaciones legibles del score ML
+│   ├── rules/          → Motor de reglas antifraude (RF-01 a RF-13)
+│   ├── ai_agent/       → Agente Gemini con 12 tools y loop agéntico
+│   ├── explainability/ → Explicaciones legibles del score ML
+│   └── utils/          → Visor y análisis de PDFs (Supabase Storage)
 ├── data/
+│   ├── dataset/        → Excel del dataset real (no versionado)
+│   ├── docs/           → PDFs de siniestros (no versionados)
 │   └── synthetic/      → CSV local (fallback sin Supabase)
 ├── docs/
 │   ├── schema.sql      → Tablas de Supabase
 │   ├── arquitectura.md → Este archivo
 │   ├── modelo_datos.md → Esquema de tablas y campos
 │   ├── uso_ia.md       → Documentación detallada de IA
-│   └── reglas_negocio.md → Catálogo RF-01 a RF-08
+│   ├── reglas_negocio.md → Catálogo RF-01 a RF-13
+│   └── limitaciones.md → Limitaciones, sesgos y alcance
 ├── tests/
 │   └── test_rules.py   → Tests unitarios del motor de reglas
 ├── .env.example        → Plantilla de variables de entorno

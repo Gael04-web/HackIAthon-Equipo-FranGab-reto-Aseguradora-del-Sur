@@ -61,13 +61,13 @@ El agente se activa cuando el analista hace click en **"Análisis Profundo con A
 - Aprende de los fraudes ya confirmados por analistas humanos
 - Produce su propio score independiente del score ML
 
-### Las 9 Tools que Gemini controla
+### Las 12 Tools que Gemini controla
 
 Gemini invoca estas funciones de forma autónoma, en el orden que considere necesario, según la pregunta o el caso que está analizando:
 
 | Tool | Qué hace | Cuándo la usa Gemini |
 |------|---------|---------------------|
-| `apply_business_rules` | Ejecuta las 8 reglas antifraude | Siempre, como primer paso del análisis |
+| `apply_business_rules` | Ejecuta las 13 reglas antifraude | Siempre, como primer paso del análisis |
 | `search_similar_claims` | NLP sobre todas las descripciones en BD | Para detectar narrativas copiadas |
 | `get_confirmed_fraud_cases` | Lee fraudes confirmados por analistas | Para calibrar su score con patrones reales |
 | `get_insured_history` | Historial de siniestros del asegurado en Supabase | Para detectar reincidencia |
@@ -75,6 +75,9 @@ Gemini invoca estas funciones de forma autónoma, en el orden que considere nece
 | `get_all_providers_risk` | Todos los proveedores ordenados por riesgo | Preguntas como "¿qué proveedores generan más alertas?" |
 | `get_top_critical_claims` | Top N siniestros por score | Preguntas como "casos más urgentes" |
 | `get_claims_by_filter` | Filtra siniestros por nivel, ramo o decisión | Preguntas como "cuántos rojos hay en Salud" |
+| `get_vehicle_info` | Datos del vehículo + chasis/motor repetido | Siniestros de Vehículos |
+| `get_alerts_by_city` | Ciudades/sucursales ordenadas por alertas | "¿Qué ciudades concentran más alertas?" |
+| `get_missing_documents` | Siniestros críticos con documentación incompleta | "¿Qué documentos faltan en los casos críticos?" |
 | `get_portfolio_stats` | Estadísticas generales del portafolio | Para contextualizar un caso individual |
 
 ### Loop Agéntico

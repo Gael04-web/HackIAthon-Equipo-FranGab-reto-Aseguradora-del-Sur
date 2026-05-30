@@ -111,7 +111,7 @@ def load_data():
 
             sin  = sb_get("siniestros")
             prov = sb_get("proveedores", "id_proveedor,nombre,en_lista_restrictiva,motivo_restriccion,reclamos_asociados")
-            aseg = sb_get("asegurados",  "id_asegurado,nombre_asegurado,perfil_riesgo")
+            aseg = sb_get("asegurados",  "id_asegurado,nombre_asegurado,perfil_riesgo,reclamos_rc_sin_tercero")
             veh  = sb_get("vehiculos",   "id_siniestro,placa,marca,modelo,anio,chasis,motor")
 
             df_sin       = pd.DataFrame(sin)
@@ -156,6 +156,8 @@ def load_data():
                 df_siniestros['nombre_asegurado'] = ''
             if 'perfil_riesgo' not in df_siniestros.columns:
                 df_siniestros['perfil_riesgo'] = ''
+            if 'reclamos_rc_sin_tercero' not in df_siniestros.columns:
+                df_siniestros['reclamos_rc_sin_tercero'] = 0
             if 'placa_vehiculo' not in df_siniestros.columns:
                 df_siniestros['placa_vehiculo'] = ''
             if 'numero_parte_policial' not in df_siniestros.columns:

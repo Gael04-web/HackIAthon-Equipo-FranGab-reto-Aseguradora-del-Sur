@@ -64,5 +64,36 @@ class TestFraudRules(unittest.TestCase):
         self.assertIn("RF-08-A", res["reglas_activadas"])
         self.assertEqual(res["score_reglas"], 8)
 
+    def test_rf_10_chasis_repetido(self):
+        # Chasis en >= 2 siniestros distintos (+10, CRÍTICO)
+        siniestro = {"chasis_en_otros_siniestros": 3}
+        res = calculate_rule_score(siniestro)
+        self.assertIn("RF-10-A", res["reglas_activadas"])
+        self.assertEqual(res["score_reglas"], 10)
+
+    def test_rf_11_beneficiario_recurrente(self):
+        # Beneficiario en >= 3 siniestros (+8)
+        siniestro = {"beneficiario_en_otros_siniestros": 4}
+        res = calculate_rule_score(siniestro)
+        self.assertIn("RF-11-A", res["reglas_activadas"])
+        self.assertEqual(res["score_reglas"], 8)
+
+    def test_rf_12_frecuencia_rc_sin_tercero(self):
+        # > 2 reclamos RC sin tercero (+6)
+        siniestro = {"reclamos_rc_sin_tercero": 3}
+        res = calculate_rule_score(siniestro)
+        self.assertIn("RF-12-A", res["reglas_activadas"])
+        self.assertEqual(res["score_reglas"], 6)
+
+    def test_rf_13_evento_rc_sin_tercero(self):
+        # Cobertura RC + historial sin tercero (+5)
+        # rc_sin_tercero=1 dispara RF-12-B (+3) y RF-13-A (+5) = 8
+        siniestro = {"cobertura": "Responsabilidad Civil", "reclamos_rc_sin_tercero": 1}
+        res = calculate_rule_score(siniestro)
+        self.assertIn("RF-13-A", res["reglas_activadas"])
+        self.assertIn("RF-12-B", res["reglas_activadas"])
+        self.assertEqual(res["score_reglas"], 3 + 5)
+
+
 if __name__ == '__main__':
     unittest.main()

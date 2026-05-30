@@ -52,10 +52,12 @@ def apply_business_rules(
     id_siniestro_similar: str = "N/A",
 ) -> dict:
     """
-    Aplica las 8 reglas de negocio antifraude del sector asegurador al siniestro.
-    Retorna score_reglas (puntuación acumulada 0-64), alertas (lista de señales
-    detectadas con su nivel de gravedad) y reglas_activadas (IDs disparados).
-    Úsala siempre como primer paso del análisis.
+    Aplica las 13 reglas de negocio antifraude del sector asegurador al siniestro
+    (RF-01 a RF-13: borde de vigencia, demora denuncia, frecuencia, proveedor
+    restrictivo, documentos, monto atípico, narrativa, perfil de riesgo,
+    chasis/motor repetido, beneficiario recurrente y reclamos RC sin tercero).
+    Retorna score_reglas (puntuación acumulada), alertas (señales con su nivel de
+    gravedad) y reglas_activadas (IDs disparados). Úsala como primer paso del análisis.
     """
     from src.rules.fraud_rules import calculate_rule_score
     return calculate_rule_score({
@@ -340,6 +342,76 @@ def get_vehicle_info(id_siniestro: str) -> dict:
     return result
 
 
+def get_alerts_by_city() -> list:
+    """
+    Agrupa los siniestros por ciudad/sucursal y cuenta cuántos están en nivel
+    de riesgo Rojo o Amarillo en cada una. Úsala cuando el analista pregunta
+    qué ciudades o sucursales concentran más alertas o casos sospechosos.
+    Retorna lista ordenada de mayor a menor concentración de alertas.
+    """
+    global _df
+    if _df.empty:
+        return []
+    col_ciudad = "sucursal" if "sucursal" in _df.columns else ("ciudad" if "ciudad" in _df.columns else None)
+    if col_ciudad is None or "nivel_riesgo" not in _df.columns:
+        return []
+
+    resultados = []
+    for ciudad, grupo in _df.groupby(col_ciudad):
+        total     = len(grupo)
+        rojos     = int((grupo["nivel_riesgo"] == "Rojo").sum())
+        amarillos = int((grupo["nivel_riesgo"] == "Amarillo").sum())
+        alertas   = rojos + amarillos
+        monto     = float(grupo[grupo["nivel_riesgo"].isin(["Rojo", "Amarillo"])]["monto_reclamado"].sum()) \
+                    if "monto_reclamado" in grupo.columns else 0.0
+        resultados.append({
+            "ciudad":            str(ciudad),
+            "total_siniestros":  total,
+            "alertas_rojo_amarillo": alertas,
+            "rojos":             rojos,
+            "amarillos":         amarillos,
+            "pct_alertas":       round(alertas / total * 100, 1) if total else 0,
+            "monto_en_riesgo":   round(monto, 2),
+        })
+    return sorted(resultados, key=lambda x: x["alertas_rojo_amarillo"], reverse=True)
+
+
+def get_missing_documents(solo_criticos: bool = True) -> list:
+    """
+    Identifica los siniestros con documentación incompleta. Si solo_criticos=True
+    (por defecto) filtra solo los casos en nivel Rojo o Amarillo, que son los que
+    el analista debe priorizar. Úsala cuando pregunten qué documentos faltan en
+    los casos críticos o qué siniestros tienen documentación incompleta.
+    Retorna id, ramo, cobertura, nivel de riesgo y los documentos que tiene el caso.
+    """
+    global _df
+    if _df.empty or "documentos_completos" not in _df.columns:
+        return []
+
+    df = _df.copy()
+    # Casos con docs incompletos
+    incompletos = df[df["documentos_completos"] == False]
+    if solo_criticos and "nivel_riesgo" in incompletos.columns:
+        incompletos = incompletos[incompletos["nivel_riesgo"].isin(["Rojo", "Amarillo"])]
+
+    resultados = []
+    for _, r in incompletos.head(20).iterrows():
+        sid = r.get("id_siniestro", "")
+        # Consultar qué documentos SÍ tiene en Supabase
+        docs = _sb_get("documentos", select="tipo_documento", filters=f"id_siniestro=eq.{sid}")
+        tipos_presentes = [d.get("tipo_documento") for d in docs] if docs else []
+        resultados.append({
+            "id_siniestro":      str(sid),
+            "ramo":              str(r.get("ramo", "")),
+            "cobertura":         str(r.get("cobertura", "")),
+            "nivel_riesgo":      str(r.get("nivel_riesgo", "")),
+            "score":             float(r.get("score_final", 0)),
+            "documentos_presentes": tipos_presentes,
+            "nota":              "Documentación marcada como incompleta",
+        })
+    return resultados
+
+
 # ---------------------------------------------------------------------------
 # Lista de tools que Gemini puede invocar
 # ---------------------------------------------------------------------------
@@ -353,6 +425,8 @@ TOOLS = [
     get_top_critical_claims,
     get_claims_by_filter,
     get_vehicle_info,
+    get_alerts_by_city,
+    get_missing_documents,
     get_portfolio_stats,
 ]
 
@@ -363,7 +437,7 @@ Tu misión es analizar siniestros de seguros y responder preguntas del analista 
 Tienes acceso a las siguientes herramientas — úsalas con criterio:
 
 HERRAMIENTAS DISPONIBLES:
-- apply_business_rules: aplica las 9 reglas antifraude a un siniestro específico
+- apply_business_rules: aplica las 13 reglas antifraude a un siniestro específico
 - search_similar_claims: busca narrativas similares en la BD con NLP
 - get_confirmed_fraud_cases: obtiene fraudes ya confirmados por humanos (para aprender)
 - get_insured_history: historial de siniestros de un asegurado (por id)
@@ -372,6 +446,8 @@ HERRAMIENTAS DISPONIBLES:
 - get_top_critical_claims: los N siniestros con mayor score
 - get_claims_by_filter: filtra siniestros por nivel_riesgo, ramo o decision_analista
 - get_vehicle_info: datos del vehículo (placa, marca, modelo, año, chasis, motor) y si el chasis/motor aparece en otros siniestros → úsala siempre en siniestros de Vehículos
+- get_alerts_by_city: ciudades/sucursales ordenadas por concentración de alertas → usa cuando pregunten "qué ciudades concentran más alertas/casos sospechosos"
+- get_missing_documents: siniestros con documentación incompleta (por defecto solo críticos) → usa cuando pregunten "qué documentos faltan en los casos críticos"
 - get_portfolio_stats: estadísticas generales del portafolio
 
 PROCESO DE ANÁLISIS DE UN SINIESTRO:

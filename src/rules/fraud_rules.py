@@ -166,6 +166,31 @@ def calculate_rule_score(siniestro_dict: dict) -> dict:
         alertas.append(f"[MEDIO] El beneficiario aparece en {beneficiario_count} siniestro(s) adicional(es) (+4 pts).")
         reglas.append("RF-11-B")
 
+    # ------------------------------------------------------------------
+    # RF-12 — Alta frecuencia de reclamos RC sin tercero identificado
+    # (patrón típico de siniestros simulados de Responsabilidad Civil)
+    # ------------------------------------------------------------------
+    rc_sin_tercero = siniestro_dict.get("reclamos_rc_sin_tercero", 0)
+
+    if rc_sin_tercero > 2:
+        score += 6
+        alertas.append(f"[ALTO] El asegurado acumula {rc_sin_tercero} reclamos previos de RC sin tercero identificado (+6 pts).")
+        reglas.append("RF-12-A")
+    elif rc_sin_tercero == 1:
+        score += 3
+        alertas.append("[MEDIO] El asegurado registra 1 reclamo previo de RC sin tercero identificado (+3 pts).")
+        reglas.append("RF-12-B")
+
+    # ------------------------------------------------------------------
+    # RF-13 — Evento de Responsabilidad Civil sin tercero identificado
+    # (el vehículo asegurado resulta afectado pero el tercero huyó o no existe)
+    # ------------------------------------------------------------------
+    coberturas_rc = {"Responsabilidad Civil", "RC"}
+    if cobertura in coberturas_rc and rc_sin_tercero >= 1:
+        score += 5
+        alertas.append("[ALTO] Siniestro de Responsabilidad Civil con patrón de eventos sin tercero identificado (+5 pts).")
+        reglas.append("RF-13-A")
+
     return {
         "score_reglas":     score,
         "alertas":          alertas,
