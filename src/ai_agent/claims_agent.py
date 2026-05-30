@@ -195,8 +195,8 @@ def get_top_critical_claims(limit: int = 10) -> list:
     global _df
     limit = int(limit)
     if not _df.empty:
-        cols  = ["id_siniestro", "ramo", "cobertura", "monto_reclamado",
-                 "score_final", "nivel_riesgo", "decision_analista"]
+        cols  = ["id_siniestro", "ramo", "cobertura", "monto_reclamado", "monto_estimado",
+                 "suma_asegurada", "score_final", "nivel_riesgo", "estado", "sucursal", "decision_analista"]
         avail = [c for c in cols if c in _df.columns]
         sort_col = "score_final" if "score_final" in _df.columns else "monto_reclamado"
         return _df.sort_values(sort_col, ascending=False).head(limit)[avail].to_dict("records")
@@ -255,8 +255,8 @@ def get_claims_by_filter(
             mask &= _df["ramo"] == ramo
         if decision_analista and "decision_analista" in _df.columns:
             mask &= _df["decision_analista"] == decision_analista
-        cols = ["id_siniestro", "ramo", "cobertura", "monto_reclamado",
-                "score_final", "nivel_riesgo", "decision_analista"]
+        cols = ["id_siniestro", "ramo", "cobertura", "monto_reclamado", "monto_estimado",
+                "suma_asegurada", "score_final", "nivel_riesgo", "estado", "sucursal", "decision_analista"]
         avail = [c for c in cols if c in _df.columns]
         return _df[mask][avail].head(limit).to_dict("records")
     return []
