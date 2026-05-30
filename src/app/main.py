@@ -112,6 +112,7 @@ def load_data():
             sin  = sb_get("siniestros")
             prov = sb_get("proveedores", "id_proveedor,nombre,en_lista_restrictiva,motivo_restriccion,reclamos_asociados")
             aseg = sb_get("asegurados",  "id_asegurado,nombre_asegurado,perfil_riesgo")
+            veh  = sb_get("vehiculos",   "id_siniestro,placa,marca,modelo,anio,chasis,motor")
 
             df_sin       = pd.DataFrame(sin)
             df_prov      = pd.DataFrame(prov)
@@ -132,6 +133,13 @@ def load_data():
                 df_siniestros = df_sin.merge(df_prov, on="id_proveedor", how="left")
                 if not df_aseg_mini.empty:
                     df_siniestros = df_siniestros.merge(df_aseg_mini, on="id_asegurado", how="left")
+                # Unir datos de vehículo
+                if veh:
+                    df_veh_mini = pd.DataFrame(veh).rename(columns={
+                        'placa': 'veh_placa', 'marca': 'veh_marca', 'modelo': 'veh_modelo',
+                        'anio': 'veh_anio', 'chasis': 'chasis', 'motor': 'motor',
+                    })
+                    df_siniestros = df_siniestros.merge(df_veh_mini, on="id_siniestro", how="left")
         except Exception as e:
             st.warning(f"Error conectando a Supabase ({e}). Usando datos locales.")
 
@@ -292,9 +300,20 @@ elif page == "Detalle de Siniestro":
             st.write(f"**Asegurado:** {nombre_aseg}  |  Perfil histórico: {perfil_badge}")
             st.write(f"**Ramo:** {row.get('ramo', 'N/A')}  |  **Cobertura:** {row.get('cobertura', 'N/A')}")
 
-            placa = row.get('placa_vehiculo', '')
-            if placa:
-                st.write(f"**Placa vehículo:** {placa}")
+            # Datos del vehículo
+            placa  = row.get('placa_vehiculo', '') or row.get('veh_placa', '')
+            marca  = row.get('veh_marca', '')
+            modelo = row.get('veh_modelo', '')
+            anio   = row.get('veh_anio', '')
+            chasis = row.get('chasis', '')
+            motor  = row.get('motor', '')
+            if placa or marca:
+                veh_parts = []
+                if marca and modelo: veh_parts.append(f"{marca} {modelo} {anio}")
+                if placa:            veh_parts.append(f"Placa: {placa}")
+                if chasis:           veh_parts.append(f"Chasis: {chasis}")
+                if motor:            veh_parts.append(f"Motor: {motor}")
+                st.write(f"**Vehículo:** {' · '.join(veh_parts)}")
 
             st.write(f"**Fecha Ocurrencia:** {row.get('fecha_ocurrencia', 'N/A')}  |  **Fecha Reporte:** {row.get('fecha_reporte', 'N/A')}")
             st.write(f"**Monto Reclamado:** ${row.get('monto_reclamado', 0):,.2f}  |  **Estimado:** ${row.get('monto_estimado', 0):,.2f}")

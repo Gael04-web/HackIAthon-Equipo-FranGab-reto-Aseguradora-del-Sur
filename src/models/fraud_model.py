@@ -77,9 +77,41 @@ class FraudModelPipeline:
             self.df['max_similarity_nlp']    = 0.0
             self.df['id_siniestro_similar']  = 'N/A'
 
+    def _enrich_vehicle_beneficiary(self):
+        """
+        Calcula cuántas veces aparece el mismo chasis, motor o beneficiario
+        en otros siniestros del portafolio. Enriquece el df con esos conteos
+        para que las reglas RF-10 y RF-11 puedan usarlos.
+        """
+        # Chasis repetido
+        if 'chasis' in self.df.columns:
+            chasis_counts = self.df[self.df['chasis'].notna()].groupby('chasis')['id_siniestro'].count()
+            self.df['chasis_en_otros_siniestros'] = self.df['chasis'].map(chasis_counts).fillna(0).astype(int) - 1
+            self.df['chasis_en_otros_siniestros'] = self.df['chasis_en_otros_siniestros'].clip(lower=0)
+        else:
+            self.df['chasis_en_otros_siniestros'] = 0
+
+        # Motor repetido
+        if 'motor' in self.df.columns:
+            motor_counts = self.df[self.df['motor'].notna()].groupby('motor')['id_siniestro'].count()
+            self.df['motor_en_otros_siniestros'] = self.df['motor'].map(motor_counts).fillna(0).astype(int) - 1
+            self.df['motor_en_otros_siniestros'] = self.df['motor_en_otros_siniestros'].clip(lower=0)
+        else:
+            self.df['motor_en_otros_siniestros'] = 0
+
+        # Beneficiario repetido
+        if 'beneficiario' in self.df.columns:
+            benef_counts = self.df[self.df['beneficiario'].notna() & (self.df['beneficiario'] != '')]\
+                           .groupby('beneficiario')['id_siniestro'].count()
+            self.df['beneficiario_en_otros_siniestros'] = self.df['beneficiario'].map(benef_counts).fillna(0).astype(int) - 1
+            self.df['beneficiario_en_otros_siniestros'] = self.df['beneficiario_en_otros_siniestros'].clip(lower=0)
+        else:
+            self.df['beneficiario_en_otros_siniestros'] = 0
+
     def _run_rules(self):
         """Calcula score_reglas para cada siniestro."""
         from src.rules.fraud_rules import calculate_rule_score
+        self._enrich_vehicle_beneficiary()
         scores = []
         for _, row in self.df.iterrows():
             d = row.to_dict()

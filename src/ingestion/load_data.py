@@ -1,5 +1,7 @@
 import os
 import json
+import random
+import string
 import requests
 import pandas as pd
 from dotenv import load_dotenv
@@ -240,7 +242,7 @@ def upload_to_supabase(data_dict: dict):
     }
 
     print("Conectado a Supabase. Subiendo datos (upsert)...")
-    order      = ['asegurados', 'polizas', 'proveedores', 'siniestros', 'documentos']
+    order      = ['asegurados', 'polizas', 'proveedores', 'siniestros', 'vehiculos', 'documentos']
     chunk_size = 100
 
     # Usar upsert para no fallar si los datos ya existen
@@ -277,6 +279,98 @@ def upload_to_supabase(data_dict: dict):
 
 
 # ---------------------------------------------------------------------------
+# Generar tabla de Vehículos y enriquecer Siniestros con Beneficiario
+# ---------------------------------------------------------------------------
+
+MARCAS_MODELOS = {
+    'Toyota':    ['Hilux', 'Corolla', 'RAV4', 'Land Cruiser', 'Yaris'],
+    'Chevrolet': ['D-Max', 'Sail', 'Tracker', 'Captiva', 'Traverse'],
+    'Kia':       ['Sportage', 'Rio', 'Sorento', 'Picanto', 'Cerato'],
+    'Hyundai':   ['Tucson', 'Accent', 'Santa Fe', 'Elantra', 'Creta'],
+    'Nissan':    ['Frontier', 'Sentra', 'X-Trail', 'Kicks', 'Versa'],
+    'Mazda':     ['CX-5', 'Mazda 3', 'Mazda 6', 'BT-50', 'CX-30'],
+}
+NOMBRES_BENEFICIARIOS = [
+    "García Morales Luis", "Pérez Vásquez Ana", "Torres Espinoza Carlos",
+    "Rodríguez Cárdenas María", "López Herrera Pedro", "Castillo Vargas Rosa",
+    "Mendoza Alvarado Jorge", "Ramos Flores Isabel", "Cabrera Ortega Diego",
+    "Vásquez Muñoz Patricia", "Salazar Reyes Andrés", "Mora Jiménez Carmen",
+]
+
+def _rand_chasis() -> str:
+    chars = string.ascii_uppercase + string.digits
+    return ''.join(random.choices(chars, k=17))
+
+def _rand_motor() -> str:
+    prefix = random.choice(['1NZ', '2GR', '3VZ', 'G4FC', 'D4CB', 'MR20'])
+    suffix = ''.join(random.choices(string.digits, k=7))
+    return f"{prefix}-{suffix}"
+
+def generate_vehiculos(df_sin: pd.DataFrame) -> tuple:
+    """
+    Genera la tabla vehiculos para siniestros de ramo Vehículos.
+    Introduce deliberadamente chasis/motor repetidos en ~8% de los casos
+    para simular fraude de partes. Retorna (df_vehiculos, df_sin_enriquecido).
+    """
+    random.seed(42)
+    vehiculos = []
+    sin_df = df_sin.copy()
+
+    # Pool de beneficiarios (algunos se repetirán en casos de fraude)
+    sin_df['beneficiario'] = ''
+
+    # Generar chasis/motor únicos base
+    chasis_pool  = [_rand_chasis() for _ in range(500)]
+    motor_pool   = [_rand_motor()  for _ in range(500)]
+
+    # Índices de siniestros Vehículos
+    idx_veh = sin_df[sin_df['ramo'] == 'Vehículos'].index.tolist()
+    idx_fraud_veh = idx_veh[:int(len(idx_veh) * 0.08)]  # 8% comparten chasis/motor
+
+    chasis_fraude = _rand_chasis()
+    motor_fraude  = _rand_motor()
+
+    for i, idx in enumerate(idx_veh):
+        row  = sin_df.loc[idx]
+        placa = row.get('placa_vehiculo', '') or f"GEN-{i:04d}"
+        marca = random.choice(list(MARCAS_MODELOS.keys()))
+        modelo = random.choice(MARCAS_MODELOS[marca])
+        anio  = random.randint(2010, 2024)
+
+        # Fraude: mismo chasis/motor en varios siniestros
+        if idx in idx_fraud_veh:
+            chasis = chasis_fraude
+            motor  = motor_fraude
+        else:
+            chasis = chasis_pool[i % len(chasis_pool)]
+            motor  = motor_pool[i % len(motor_pool)]
+
+        vehiculos.append({
+            'id_vehiculo':  f"VEH-{i+1:04d}",
+            'id_siniestro': row['id_siniestro'],
+            'placa':        placa,
+            'marca':        marca,
+            'modelo':       modelo,
+            'anio':         anio,
+            'chasis':       chasis,
+            'motor':        motor,
+        })
+
+    # Asignar beneficiarios (algunos repetidos en casos de fraude)
+    beneficiario_fraude = NOMBRES_BENEFICIARIOS[0]
+    for i, idx in enumerate(sin_df.index):
+        row = sin_df.loc[idx]
+        # Casos con score alto (primeros 75) reciben beneficiario repetido
+        if i < 75 and random.random() < 0.3:
+            sin_df.at[idx, 'beneficiario'] = beneficiario_fraude
+        else:
+            sin_df.at[idx, 'beneficiario'] = random.choice(NOMBRES_BENEFICIARIOS)
+
+    df_veh = pd.DataFrame(vehiculos)
+    return df_veh, sin_df
+
+
+# ---------------------------------------------------------------------------
 # Backup CSV
 # ---------------------------------------------------------------------------
 
@@ -300,17 +394,20 @@ if __name__ == "__main__":
     df_sin  = transform_siniestros(sheets['1_Siniestros'])
     df_docs = transform_documentos(sheets['5_Documentos'])
 
+    # Generar vehículos y enriquecer siniestros con beneficiario
+    df_veh, df_sin = generate_vehiculos(df_sin)
+
     print(f"\nResumen del dataset:")
     print(f"  Asegurados : {len(df_aseg)}")
     print(f"  Pólizas    : {len(df_pol)}")
     print(f"  Proveedores: {len(df_prov)}")
     print(f"  Siniestros : {len(df_sin)}")
+    print(f"  Vehículos  : {len(df_veh)}")
     print(f"  Documentos : {len(df_docs)}")
 
     save_csv(df_sin)
 
     if SUPABASE_URL and SUPABASE_KEY and "your_" not in SUPABASE_KEY:
-        # Subir PDFs a Supabase Storage y obtener URLs
         df_docs = upload_pdfs_to_storage(df_docs)
 
         upload_to_supabase({
@@ -318,6 +415,7 @@ if __name__ == "__main__":
             'polizas':    df_pol.to_dict('records'),
             'proveedores': df_prov.to_dict('records'),
             'siniestros': df_sin.to_dict('records'),
+            'vehiculos':  df_veh.to_dict('records'),
             'documentos': df_docs.to_dict('records'),
         })
     else:

@@ -3,19 +3,19 @@
 -- IDs son TEXT (SIN-0001, POL-0001, ASEG-0010, TALLER-007, DOC-0001)
 
 -- Limpiar tablas anteriores (ejecutar si ya existen)
--- DROP TABLE IF EXISTS documentos, siniestros, polizas, proveedores, asegurados CASCADE;
+-- DROP TABLE IF EXISTS documentos, vehiculos, siniestros, polizas, proveedores, asegurados CASCADE;
 
 CREATE TABLE asegurados (
-    id_asegurado        TEXT PRIMARY KEY,
-    nombre_asegurado    TEXT,
-    segmento            TEXT,
-    ciudad              TEXT,
-    antiguedad_anios    INT,
-    num_polizas         INT,
-    reclamos_12m        INT,
-    reclamos_historico_total  INT,
-    reclamos_rc_sin_tercero   INT,
-    perfil_riesgo       TEXT   -- Alto / Medio / Bajo
+    id_asegurado             TEXT PRIMARY KEY,
+    nombre_asegurado         TEXT,
+    segmento                 TEXT,
+    ciudad                   TEXT,
+    antiguedad_anios         INT,
+    num_polizas              INT,
+    reclamos_12m             INT,
+    reclamos_historico_total INT,
+    reclamos_rc_sin_tercero  INT,
+    perfil_riesgo            TEXT   -- Alto / Medio / Bajo
 );
 
 CREATE TABLE polizas (
@@ -31,14 +31,14 @@ CREATE TABLE polizas (
 );
 
 CREATE TABLE proveedores (
-    id_proveedor        TEXT PRIMARY KEY,
-    nombre              TEXT,
-    tipo                TEXT,
-    ciudad              TEXT,
-    reclamos_asociados  INT,
-    monto_promedio      NUMERIC,
+    id_proveedor         TEXT PRIMARY KEY,
+    nombre               TEXT,
+    tipo                 TEXT,
+    ciudad               TEXT,
+    reclamos_asociados   INT,
+    monto_promedio       NUMERIC,
     en_lista_restrictiva BOOLEAN,
-    motivo_restriccion  TEXT
+    motivo_restriccion   TEXT
 );
 
 CREATE TABLE siniestros (
@@ -66,13 +66,27 @@ CREATE TABLE siniestros (
     suma_asegurada                  NUMERIC,
     max_similarity_nlp              FLOAT,
     numero_parte_policial           TEXT,
+    beneficiario                    TEXT,
     decision_analista               TEXT DEFAULT 'Pendiente'
 );
 
+-- Vehículos asegurados: placa, chasis, motor, marca, modelo, año
+-- Un vehículo puede aparecer en múltiples siniestros (señal de alerta)
+CREATE TABLE vehiculos (
+    id_vehiculo  TEXT PRIMARY KEY,
+    id_siniestro TEXT REFERENCES siniestros(id_siniestro),
+    placa        TEXT,
+    marca        TEXT,
+    modelo       TEXT,
+    anio         INT,
+    chasis       TEXT,   -- número de chasis VIN (señal de fraude si se repite)
+    motor        TEXT    -- número de motor (señal de fraude si se repite)
+);
+
 CREATE TABLE documentos (
-    id_documento    TEXT PRIMARY KEY,
-    id_siniestro    TEXT REFERENCES siniestros(id_siniestro),
-    tipo_documento  TEXT,
-    nombre_archivo  TEXT,
-    url_pdf         TEXT    -- URL pública en Supabase Storage (bucket: siniestros-docs)
+    id_documento  TEXT PRIMARY KEY,
+    id_siniestro  TEXT REFERENCES siniestros(id_siniestro),
+    tipo_documento TEXT,
+    nombre_archivo TEXT,
+    url_pdf        TEXT    -- URL pública en Supabase Storage (bucket: siniestros-docs)
 );

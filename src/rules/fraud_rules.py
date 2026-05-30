@@ -132,6 +132,40 @@ def calculate_rule_score(siniestro_dict: dict) -> dict:
         alertas.append("[ALTO] El asegurado tiene perfil de riesgo histórico ALTO (+6 pts).")
         reglas.append("RF-09-A")
 
+    # ------------------------------------------------------------------
+    # RF-10 — Chasis o motor repetido en múltiples siniestros
+    # ------------------------------------------------------------------
+    chasis_count = siniestro_dict.get("chasis_en_otros_siniestros", 0)
+    motor_count  = siniestro_dict.get("motor_en_otros_siniestros",  0)
+
+    if chasis_count >= 2:
+        score += 10
+        alertas.append(f"[CRÍTICO] El número de chasis aparece en {chasis_count} siniestros diferentes (+10 pts).")
+        reglas.append("RF-10-A")
+    elif chasis_count == 1:
+        score += 5
+        alertas.append("[ALTO] El número de chasis aparece en otro siniestro (+5 pts).")
+        reglas.append("RF-10-B")
+
+    if motor_count >= 1 and chasis_count == 0:
+        score += 5
+        alertas.append(f"[ALTO] El número de motor aparece en {motor_count} siniestro(s) adicional(es) (+5 pts).")
+        reglas.append("RF-10-C")
+
+    # ------------------------------------------------------------------
+    # RF-11 — Beneficiario repetido en múltiples siniestros
+    # ------------------------------------------------------------------
+    beneficiario_count = siniestro_dict.get("beneficiario_en_otros_siniestros", 0)
+
+    if beneficiario_count >= 3:
+        score += 8
+        alertas.append(f"[ALTO] El beneficiario aparece en {beneficiario_count} siniestros distintos (+8 pts).")
+        reglas.append("RF-11-A")
+    elif beneficiario_count in (1, 2):
+        score += 4
+        alertas.append(f"[MEDIO] El beneficiario aparece en {beneficiario_count} siniestro(s) adicional(es) (+4 pts).")
+        reglas.append("RF-11-B")
+
     return {
         "score_reglas":     score,
         "alertas":          alertas,

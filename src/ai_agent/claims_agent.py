@@ -295,6 +295,51 @@ def get_portfolio_stats() -> dict:
     }
 
 
+def get_vehicle_info(id_siniestro: str) -> dict:
+    """
+    Consulta los datos del vehículo asegurado en un siniestro: placa, marca,
+    modelo, año, número de chasis y número de motor. También verifica si el
+    mismo chasis o motor aparece en otros siniestros del portafolio, lo cual
+    es señal de fraude de partes o vehículos clonados.
+    """
+    global _df
+    # Consultar vehículo específico
+    veh_data = _sb_get("vehiculos", filters=f"id_siniestro=eq.{id_siniestro}")
+    if not veh_data:
+        # Fallback al df si tiene columnas de vehículo
+        if not _df.empty and 'chasis' in _df.columns:
+            rows = _df[_df['id_siniestro'] == id_siniestro]
+            if len(rows) > 0:
+                r = rows.iloc[0]
+                veh_data = [{"placa": r.get("placa_vehiculo"), "chasis": r.get("chasis"),
+                             "motor": r.get("motor"), "marca": r.get("veh_marca")}]
+
+    if not veh_data:
+        return {"error": "Vehículo no encontrado"}
+
+    v = veh_data[0]
+    result = dict(v)
+
+    # Verificar repetición de chasis en otros siniestros
+    if v.get("chasis"):
+        otros_chasis = _sb_get("vehiculos",
+                               select="id_siniestro",
+                               filters=f"chasis=eq.{v['chasis']}")
+        otros_ids = [x['id_siniestro'] for x in otros_chasis if x['id_siniestro'] != id_siniestro]
+        result["chasis_en_otros_siniestros"] = len(otros_ids)
+        result["otros_siniestros_mismo_chasis"] = otros_ids
+
+    # Verificar repetición de motor
+    if v.get("motor"):
+        otros_motor = _sb_get("vehiculos",
+                               select="id_siniestro",
+                               filters=f"motor=eq.{v['motor']}")
+        otros_ids_m = [x['id_siniestro'] for x in otros_motor if x['id_siniestro'] != id_siniestro]
+        result["motor_en_otros_siniestros"] = len(otros_ids_m)
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Lista de tools que Gemini puede invocar
 # ---------------------------------------------------------------------------
@@ -307,6 +352,7 @@ TOOLS = [
     get_all_providers_risk,
     get_top_critical_claims,
     get_claims_by_filter,
+    get_vehicle_info,
     get_portfolio_stats,
 ]
 
@@ -317,19 +363,21 @@ Tu misión es analizar siniestros de seguros y responder preguntas del analista 
 Tienes acceso a las siguientes herramientas — úsalas con criterio:
 
 HERRAMIENTAS DISPONIBLES:
-- apply_business_rules: aplica las 8 reglas antifraude a un siniestro específico
+- apply_business_rules: aplica las 9 reglas antifraude a un siniestro específico
 - search_similar_claims: busca narrativas similares en la BD con NLP
 - get_confirmed_fraud_cases: obtiene fraudes ya confirmados por humanos (para aprender)
 - get_insured_history: historial de siniestros de un asegurado (por id)
 - get_provider_risk: perfil de riesgo de un proveedor individual (por id)
-- get_all_providers_risk: TODOS los proveedores con sus métricas, ordenados por riesgo → usa esta cuando pregunten "qué proveedores tienen más alertas" o similar
-- get_top_critical_claims: los N siniestros con mayor score → usa cuando pregunten "casos más críticos/urgentes/prioritarios"
-- get_claims_by_filter: filtra siniestros por nivel_riesgo, ramo o decision_analista → usa para preguntas como "cuántos rojos hay en Salud" o "casos pendientes"
+- get_all_providers_risk: TODOS los proveedores con sus métricas, ordenados por riesgo
+- get_top_critical_claims: los N siniestros con mayor score
+- get_claims_by_filter: filtra siniestros por nivel_riesgo, ramo o decision_analista
+- get_vehicle_info: datos del vehículo (placa, marca, modelo, año, chasis, motor) y si el chasis/motor aparece en otros siniestros → úsala siempre en siniestros de Vehículos
 - get_portfolio_stats: estadísticas generales del portafolio
 
 PROCESO DE ANÁLISIS DE UN SINIESTRO:
 1. apply_business_rules con los datos del caso
-2. search_similar_claims con la descripción
+2. Si es ramo Vehículos: get_vehicle_info para verificar chasis/motor repetido
+3. search_similar_claims con la descripción
 3. get_insured_history con el id del asegurado
 4. get_provider_risk con el id del proveedor
 5. get_confirmed_fraud_cases para calibrar con patrones reales
