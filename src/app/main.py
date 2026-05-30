@@ -305,15 +305,22 @@ def load_data():
     df_siniestros = None
     if _sb_configured():
         try:
-            def sb_get(table, select="*", limit=2000):
-                r = requests.get(
-                    _sb_url(table, f"select={select}&limit={limit}"),
-                    headers=_sb_headers(), timeout=20
-                )
-                r.raise_for_status()
-                return r.json()
+            # Lectura resiliente: si una tabla opcional falla, devuelve []
+            # en vez de romper toda la carga y caer al CSV.
+            def sb_get(table, select="*", limit=2000, critico=False):
+                try:
+                    r = requests.get(
+                        _sb_url(table, f"select={select}&limit={limit}"),
+                        headers=_sb_headers(), timeout=20
+                    )
+                    r.raise_for_status()
+                    return r.json()
+                except Exception:
+                    if critico:
+                        raise
+                    return []
 
-            sin  = sb_get("siniestros")
+            sin  = sb_get("siniestros", critico=True)   # crítica: sin esto, no hay app
             prov = sb_get("proveedores", "id_proveedor,nombre,en_lista_restrictiva,motivo_restriccion,reclamos_asociados")
             aseg = sb_get("asegurados",  "id_asegurado,nombre_asegurado,perfil_riesgo,reclamos_rc_sin_tercero")
             veh  = sb_get("vehiculos",   "id_siniestro,placa,marca,modelo,anio,chasis,motor")
@@ -333,11 +340,13 @@ def load_data():
             else:
                 df_sin['decision_analista'] = df_sin['decision_analista'].fillna('Pendiente')
 
-            if not df_sin.empty and not df_prov.empty:
-                df_siniestros = df_sin.merge(df_prov, on="id_proveedor", how="left")
+            if not df_sin.empty:
+                df_siniestros = df_sin
+                if not df_prov.empty:
+                    df_siniestros = df_siniestros.merge(df_prov, on="id_proveedor", how="left")
                 if not df_aseg_mini.empty:
                     df_siniestros = df_siniestros.merge(df_aseg_mini, on="id_asegurado", how="left")
-                # Unir datos de vehículo
+                # Unir datos de vehículo (si la tabla existe)
                 if veh:
                     df_veh_mini = pd.DataFrame(veh).rename(columns={
                         'placa': 'veh_placa', 'marca': 'veh_marca', 'modelo': 'veh_modelo',
