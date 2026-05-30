@@ -86,8 +86,172 @@ def generate_pdf_report(claim_id, risk_level, score, ai_text):
 st.set_page_config(
     page_title="Fraudia Claims - Aseguradora del Sur",
     layout="wide",
-    page_icon="🛡️"
+    page_icon="🛡️",
+    initial_sidebar_state="expanded",
 )
+
+# ---------------------------------------------------------------------------
+# Estilo global — tema oscuro tecnológico
+# ---------------------------------------------------------------------------
+st.markdown("""
+<style>
+    /* Importar fuente tecnológica */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    html, body, [class*="css"]  {
+        font-family: 'Inter', -apple-system, sans-serif;
+    }
+
+    /* Fondo principal con gradiente sutil */
+    .stApp {
+        background: radial-gradient(ellipse at top, #0f1729 0%, #0a0e1a 50%, #070a12 100%);
+    }
+
+    /* Sidebar oscuro con borde brillante */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0d1424 0%, #0a0f1c 100%);
+        border-right: 1px solid rgba(56, 189, 248, 0.15);
+    }
+
+    /* Títulos con gradiente */
+    h1 {
+        background: linear-gradient(90deg, #38bdf8 0%, #818cf8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 800 !important;
+        letter-spacing: -0.02em;
+    }
+    h2, h3 { color: #e2e8f0 !important; font-weight: 700 !important; }
+
+    /* Cards de métricas (st.metric) */
+    div[data-testid="stMetric"] {
+        background: linear-gradient(145deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.7) 100%);
+        border: 1px solid rgba(56, 189, 248, 0.18);
+        border-radius: 16px;
+        padding: 18px 20px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.04);
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-3px);
+        border-color: rgba(56, 189, 248, 0.45);
+        box-shadow: 0 8px 32px rgba(56, 189, 248, 0.12);
+    }
+    div[data-testid="stMetricValue"] {
+        font-weight: 800 !important;
+        font-size: 1.9rem !important;
+        color: #f1f5f9 !important;
+    }
+    div[data-testid="stMetricLabel"] { color: #94a3b8 !important; font-weight: 500 !important; }
+
+    /* Botones con glow */
+    .stButton > button {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        border-radius: 12px;
+        color: #e2e8f0;
+        font-weight: 600;
+        padding: 10px 20px;
+        transition: all 0.2s ease;
+    }
+    .stButton > button:hover {
+        border-color: #38bdf8;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
+        color: #ffffff;
+        transform: translateY(-1px);
+    }
+
+    /* Inputs y selects */
+    .stSelectbox > div > div, .stMultiSelect > div > div {
+        background-color: rgba(15, 23, 42, 0.6);
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] {
+        background: rgba(30, 41, 59, 0.5);
+        border-radius: 10px 10px 0 0;
+        padding: 8px 18px;
+        color: #94a3b8;
+    }
+    .stTabs [aria-selected="true"] {
+        background: rgba(56, 189, 248, 0.15) !important;
+        color: #38bdf8 !important;
+    }
+
+    /* Expanders */
+    .streamlit-expanderHeader, details summary {
+        background: rgba(30, 41, 59, 0.5) !important;
+        border-radius: 10px !important;
+        border: 1px solid rgba(148, 163, 184, 0.15) !important;
+    }
+
+    /* Radio del sidebar como menú de navegación */
+    section[data-testid="stSidebar"] .stRadio > div {
+        gap: 4px;
+    }
+    section[data-testid="stSidebar"] .stRadio label {
+        padding: 8px 12px;
+        border-radius: 10px;
+        transition: background 0.15s ease;
+    }
+    section[data-testid="stSidebar"] .stRadio label:hover {
+        background: rgba(56, 189, 248, 0.1);
+    }
+
+    /* Dataframe */
+    .stDataFrame { border-radius: 12px; overflow: hidden; }
+
+    /* Divisores más sutiles */
+    hr { border-color: rgba(148, 163, 184, 0.12) !important; }
+
+    /* Tarjeta de datos personalizada */
+    .info-card {
+        background: linear-gradient(145deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.55) 100%);
+        border: 1px solid rgba(56, 189, 248, 0.15);
+        border-radius: 16px;
+        padding: 22px 26px;
+        margin-bottom: 8px;
+    }
+    .info-card .row { padding: 7px 0; border-bottom: 1px solid rgba(148,163,184,0.08); display:flex; }
+    .info-card .row:last-child { border-bottom: none; }
+    .info-card .lbl { color: #64748b; font-size: 0.82rem; min-width: 150px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+    .info-card .val { color: #e2e8f0; font-size: 0.95rem; font-weight: 500; }
+    .info-card .mono { font-family: 'JetBrains Mono', monospace; color: #7dd3fc; }
+
+    /* Badge de nivel de riesgo */
+    .risk-badge {
+        display: inline-block; padding: 6px 16px; border-radius: 999px;
+        font-weight: 700; font-size: 0.85rem; letter-spacing: 0.04em;
+    }
+    .risk-rojo { background: rgba(239,68,68,0.15); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); }
+    .risk-amarillo { background: rgba(245,158,11,0.15); color:#fcd34d; border:1px solid rgba(245,158,11,0.4); }
+    .risk-verde { background: rgba(34,197,94,0.15); color:#86efac; border:1px solid rgba(34,197,94,0.4); }
+</style>
+""", unsafe_allow_html=True)
+
+
+# Plantilla oscura para los gráficos de Plotly
+PLOTLY_DARK = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="#cbd5e1", family="Inter"),
+    margin=dict(t=30, b=10, l=10, r=10),
+)
+
+
+def clean_val(v, default="—"):
+    """Limpia valores NaN / 'nan' / vacíos para mostrar en la UI."""
+    if v is None:
+        return default
+    s = str(v).strip()
+    if s == "" or s.lower() == "nan" or s.lower() == "none":
+        return default
+    return s
+
 
 # ---------------------------------------------------------------------------
 # Data loading & model — cache separado para no reentrenar en decisiones
@@ -200,8 +364,24 @@ if st.session_state.decisions:
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("## 🛡️ Fraudia Claims")
-st.sidebar.markdown("**Aseguradora del Sur**")
+st.sidebar.markdown("""
+<div style="text-align:center; padding: 12px 0 18px 0;">
+    <div style="font-size: 2.6rem; line-height:1;">🛡️</div>
+    <div style="font-size:1.45rem; font-weight:800; background:linear-gradient(90deg,#38bdf8,#818cf8);
+                -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-top:6px;">
+        Fraudia Claims
+    </div>
+    <div style="color:#64748b; font-size:0.8rem; font-weight:500; letter-spacing:0.05em; margin-top:2px;">
+        ASEGURADORA DEL SUR
+    </div>
+    <div style="margin-top:10px;">
+        <span style="background:rgba(34,197,94,0.15);color:#86efac;border:1px solid rgba(34,197,94,0.35);
+                     padding:3px 10px;border-radius:999px;font-size:0.7rem;font-weight:600;">
+            ● Sistema Antifraude IA
+        </span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 page = st.sidebar.radio("Navegación", [
     "Dashboard Principal",
@@ -209,7 +389,7 @@ page = st.sidebar.radio("Navegación", [
     "Inspector FRAUDIA (Asistente)",
     "Métricas del Modelo",
     "✍️ Registrar Siniestro",
-])
+], label_visibility="collapsed")
 
 # ---------------------------------------------------------------------------
 # Dashboard Principal
@@ -249,12 +429,21 @@ if page == "Dashboard Principal":
         dist.columns = ['Nivel de Riesgo', 'Cantidad']
         fig = px.bar(
             dist, x='Nivel de Riesgo', y='Cantidad', color='Nivel de Riesgo',
-            color_discrete_map={"Rojo": "red", "Amarillo": "orange", "Verde": "green"}
+            color_discrete_map={"Rojo": "#ef4444", "Amarillo": "#f59e0b", "Verde": "#22c55e"},
+            text='Cantidad',
         )
+        fig.update_traces(textposition='outside', marker_line_width=0)
+        fig.update_layout(**PLOTLY_DARK, showlegend=False)
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.1)")
         st.plotly_chart(fig, use_container_width=True)
     with c2:
         st.subheader("Reclamos por Ramo")
-        fig2 = px.pie(df, names='ramo', hole=0.3)
+        fig2 = px.pie(df, names='ramo', hole=0.55,
+                      color_discrete_sequence=["#38bdf8", "#818cf8", "#c084fc", "#f472b6", "#fbbf24"])
+        fig2.update_traces(textinfo='percent+label', marker_line_width=2,
+                           marker_line_color="#0a0e1a")
+        fig2.update_layout(**PLOTLY_DARK)
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("---")
@@ -295,49 +484,69 @@ elif page == "Detalle de Siniestro":
         with c1:
             st.subheader("Datos del Siniestro")
 
-            nombre_aseg  = row.get('nombre_asegurado', '') or row.get('id_asegurado', 'N/A')
-            perfil_riesgo = row.get('perfil_riesgo', '')
-            perfil_badge = {"Alto": "🔴 Alto", "Medio": "🟡 Medio", "Bajo": "🟢 Bajo"}.get(perfil_riesgo, perfil_riesgo)
+            nombre_aseg   = clean_val(row.get('nombre_asegurado'), clean_val(row.get('id_asegurado')))
+            perfil_riesgo = clean_val(row.get('perfil_riesgo'), '')
+            perfil_badge  = {"Alto": "🔴 Alto", "Medio": "🟡 Medio", "Bajo": "🟢 Bajo"}.get(perfil_riesgo, perfil_riesgo or '—')
 
-            st.write(f"**Asegurado:** {nombre_aseg}  |  Perfil histórico: {perfil_badge}")
-            st.write(f"**Ramo:** {row.get('ramo', 'N/A')}  |  **Cobertura:** {row.get('cobertura', 'N/A')}")
+            # Construir filas de la tarjeta (solo las que tienen valor)
+            rows_html = []
+            def add_row(lbl, val, mono=False):
+                cls = "val mono" if mono else "val"
+                rows_html.append(f'<div class="row"><div class="lbl">{lbl}</div><div class="{cls}">{val}</div></div>')
 
-            # Datos del vehículo
-            placa  = row.get('placa_vehiculo', '') or row.get('veh_placa', '')
-            marca  = row.get('veh_marca', '')
-            modelo = row.get('veh_modelo', '')
-            anio   = row.get('veh_anio', '')
-            chasis = row.get('chasis', '')
-            motor  = row.get('motor', '')
+            add_row("Asegurado", f"{nombre_aseg} &nbsp;·&nbsp; Perfil: {perfil_badge}")
+            add_row("Ramo / Cobertura", f"{clean_val(row.get('ramo'))} &nbsp;·&nbsp; {clean_val(row.get('cobertura'))}")
+
+            # Vehículo — solo si realmente hay datos válidos
+            placa  = clean_val(row.get('placa_vehiculo'), clean_val(row.get('veh_placa'), ''))
+            marca  = clean_val(row.get('veh_marca'), '')
+            modelo = clean_val(row.get('veh_modelo'), '')
+            anio   = clean_val(row.get('veh_anio'), '')
+            chasis = clean_val(row.get('chasis'), '')
+            motor  = clean_val(row.get('motor'), '')
             if placa or marca:
-                veh_parts = []
-                if marca and modelo: veh_parts.append(f"{marca} {modelo} {anio}")
-                if placa:            veh_parts.append(f"Placa: {placa}")
-                if chasis:           veh_parts.append(f"Chasis: {chasis}")
-                if motor:            veh_parts.append(f"Motor: {motor}")
-                st.write(f"**Vehículo:** {' · '.join(veh_parts)}")
+                veh = []
+                if marca and modelo: veh.append(f"{marca} {modelo} {anio}".strip())
+                if placa:  veh.append(f"Placa <span class='mono'>{placa}</span>")
+                if chasis: veh.append(f"Chasis <span class='mono'>{chasis}</span>")
+                if motor:  veh.append(f"Motor <span class='mono'>{motor}</span>")
+                add_row("Vehículo", " &nbsp;·&nbsp; ".join(veh))
 
-            st.write(f"**Fecha Ocurrencia:** {row.get('fecha_ocurrencia', 'N/A')}  |  **Fecha Reporte:** {row.get('fecha_reporte', 'N/A')}")
-            st.write(f"**Monto Reclamado:** ${row.get('monto_reclamado', 0):,.2f}  |  **Estimado:** ${row.get('monto_estimado', 0):,.2f}")
-            st.write(f"**Estado:** {row.get('estado', 'N/A')}  |  **Sucursal:** {row.get('sucursal', 'N/A')}")
+            add_row("Fechas", f"Ocurrencia {clean_val(row.get('fecha_ocurrencia'))} &nbsp;→&nbsp; Reporte {clean_val(row.get('fecha_reporte'))}")
+            add_row("Montos", f"Reclamado <span class='mono'>&#36;{row.get('monto_reclamado', 0):,.0f}</span> &nbsp;·&nbsp; Estimado <span class='mono'>&#36;{row.get('monto_estimado', 0):,.0f}</span>")
+            add_row("Estado / Sucursal", f"{clean_val(row.get('estado'))} &nbsp;·&nbsp; {clean_val(row.get('sucursal'))}")
 
-            nombre_prov = row.get('nombre_proveedor', row.get('id_proveedor', 'N/A'))
-            motivo_prov = row.get('motivo_restriccion_proveedor', '')
-            prov_str    = nombre_prov + (f"  ⚠️ *{motivo_prov}*" if motivo_prov else "")
-            st.write(f"**Proveedor:** {prov_str}")
+            nombre_prov = clean_val(row.get('nombre_proveedor'), clean_val(row.get('id_proveedor')))
+            motivo_prov = clean_val(row.get('motivo_restriccion_proveedor'), '')
+            prov_str    = nombre_prov + (f" &nbsp;<span style='color:#fca5a5'>⚠️ {motivo_prov}</span>" if motivo_prov else "")
+            add_row("Proveedor", prov_str)
 
-            parte = row.get('numero_parte_policial', '')
+            parte = clean_val(row.get('numero_parte_policial'), '')
             if parte:
-                st.write(f"**N° Parte Policial:** {parte}")
+                add_row("N° Parte Policial", f"<span class='mono'>{parte}</span>")
 
-            st.write(f"**Descripción:** {row.get('descripcion', 'N/A')}")
+            add_row("Descripción", clean_val(row.get('descripcion')))
+
+            st.markdown(f'<div class="info-card">{"".join(rows_html)}</div>', unsafe_allow_html=True)
+
         with c2:
             st.subheader("Evaluación de Riesgo")
-            st.metric("Score de Fraude", f"{row['score_final']:.2f}/100")
             nivel = row['nivel_riesgo']
-            if nivel == "Rojo":      st.error("NIVEL ROJO - ALTO RIESGO")
-            elif nivel == "Amarillo": st.warning("NIVEL AMARILLO - REVISIÓN NECESARIA")
-            else:                     st.success("NIVEL VERDE - RIESGO BAJO")
+            colores = {"Rojo": "#ef4444", "Amarillo": "#f59e0b", "Verde": "#22c55e"}
+            cls_map = {"Rojo": "risk-rojo", "Amarillo": "risk-amarillo", "Verde": "risk-verde"}
+            txt_map = {"Rojo": "ALTO RIESGO", "Amarillo": "REVISIÓN NECESARIA", "Verde": "RIESGO BAJO"}
+            color = colores.get(nivel, "#64748b")
+            score = row['score_final']
+            st.markdown(f"""
+            <div class="info-card" style="text-align:center; border-color:{color}55;">
+                <div style="color:#64748b;font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Score de Fraude</div>
+                <div style="font-size:3.2rem;font-weight:800;color:{color};line-height:1.1;margin:6px 0;">{score:.0f}<span style="font-size:1.3rem;color:#475569;">/100</span></div>
+                <div class="risk-badge {cls_map.get(nivel,'')}">● NIVEL {nivel.upper()} — {txt_map.get(nivel,'')}</div>
+                <div style="margin-top:16px;height:8px;background:rgba(148,163,184,0.15);border-radius:999px;overflow:hidden;">
+                    <div style="width:{min(score,100)}%;height:100%;background:linear-gradient(90deg,{color}88,{color});border-radius:999px;"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.markdown("---")
 
@@ -583,8 +792,12 @@ elif page == "Métricas del Modelo":
         st.subheader("🧠 ¿En qué se fija la IA?")
         st.write("Las barras más largas son las pistas que el modelo considera más determinantes.")
         fi = model.get_feature_importances()
-        fig_fi = px.bar(fi.head(10), x='importance', y='feature', orientation='h')
-        fig_fi.update_layout(yaxis={'categoryorder': 'total ascending'})
+        fig_fi = px.bar(fi.head(10), x='importance', y='feature', orientation='h',
+                        color='importance', color_continuous_scale=["#1e3a5f", "#38bdf8"])
+        fig_fi.update_layout(yaxis={'categoryorder': 'total ascending'},
+                             coloraxis_showscale=False, **PLOTLY_DARK)
+        fig_fi.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.1)")
+        fig_fi.update_yaxes(showgrid=False)
         st.plotly_chart(fig_fi, use_container_width=True)
     with c2:
         st.subheader("📝 Resultados del Examen")
