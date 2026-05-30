@@ -212,18 +212,33 @@ def upload_pdfs_to_storage(df_docs: pd.DataFrame) -> pd.DataFrame:
 
     print(f"  PDFs subidos: {len(url_map)}/{len(pdfs)}")
 
-    # Mapear url_pdf a cada documento según nombre_archivo
+    # Normalizar nombres: quitar espacios, guiones, guiones bajos y .pdf
+    import re
+    def _norm(s):
+        return re.sub(r'[\s\-_]|\.pdf', '', str(s).lower())
+
+    # Índice de PDFs normalizados → url
+    norm_map = {_norm(fname): url for fname, url in url_map.items()}
+
     def find_url(nombre_archivo):
         if not nombre_archivo:
             return None
-        # Buscar coincidencia directa o parcial
-        for fname, url in url_map.items():
-            if nombre_archivo in fname or fname in nombre_archivo:
+        target = _norm(nombre_archivo)
+        if not target:
+            return None
+        # 1) Coincidencia exacta normalizada
+        if target in norm_map:
+            return norm_map[target]
+        # 2) Coincidencia por substring (ej. nombre sin .pdf)
+        for nfname, url in norm_map.items():
+            if target == nfname or target in nfname or nfname in target:
                 return url
         return None
 
     df_docs = df_docs.copy()
     df_docs['url_pdf'] = df_docs['nombre_archivo'].apply(find_url)
+    n_con_url = df_docs['url_pdf'].notna().sum()
+    print(f"  Documentos vinculados a PDF: {n_con_url}")
     return df_docs
 
 
