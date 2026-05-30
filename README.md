@@ -9,24 +9,26 @@ La app combina un pipeline de machine learning para clasificar el portafolio com
 ## Lo que hace
 
 **Pipeline ML (scoring del portafolio):**
-- Aplica 8 reglas de negocio antifraude codificadas por expertos del sector
+- Aplica 13 reglas de negocio antifraude (RF-01 a RF-13), incluyendo chasis/motor repetido, beneficiario recurrente y reclamos RC sin tercero
 - Detecta descripciones de siniestros sospechosamente parecidas entre sí usando NLP (TF-IDF)
 - Entrena un Random Forest e Isolation Forest con los datos históricos
 - Combina todo en un score ML de 0 a 100 para los 500 siniestros del portafolio
 
 **Agente Gemini (análisis profundo por demanda):**
-- Consulta Supabase en tiempo real: historial del asegurado, perfil del proveedor, casos similares
+- Consulta Supabase en tiempo real: historial del asegurado, perfil del proveedor, datos del vehículo, casos similares
 - Lee los fraudes ya confirmados por analistas humanos y aprende de sus patrones
 - Decide autónomamente qué información necesita (12 herramientas disponibles)
 - Produce su propio score independiente con justificación detallada
 - Responde preguntas libres sobre el portafolio en el chat del Inspector FRAUDIA
+- Lee los documentos PDF (facturas, partes policiales) y detecta inconsistencias
 
 **Flujo del analista:**
 - Dashboard con KPIs, gráficos y tabla filtrable del portafolio completo
-- Detalle de cada siniestro con Score ML + Score Gemini para comparar
+- Detalle de cada siniestro con Score ML + Score Gemini, datos del vehículo (placa, chasis, motor) y visor de documentos PDF
+- Indicador 📎 y filtro para ubicar al instante los siniestros con documentos adjuntos
 - Descarga de reporte en PDF con la conclusión del agente
 - Registro de decisión (Fraude / Investigación / Legítimo) que se guarda en Supabase y retroalimenta al agente
-- Formulario para registrar siniestros nuevos con análisis en tiempo real
+- Formulario para registrar siniestros nuevos (ID correlativo SIN-XXXX) con análisis en tiempo real y adjuntar PDFs de respaldo
 
 ---
 
@@ -177,12 +179,12 @@ Muestra el resumen del portafolio completo: KPIs de riesgo, estado de las revisi
 
 ### Detalle de Siniestro
 
-Selecciona cualquier siniestro del dropdown (ordenados de mayor a menor score ML). Verás nombre del asegurado, placa del vehículo, número de parte policial, proveedor con su motivo de restricción si aplica, y el score calculado.
+Selecciona un siniestro del dropdown. Cada opción muestra su nivel de riesgo (🔴🟡🟢) y un 📎 si tiene documentos adjuntos; con el checkbox **"Solo con PDF"** filtras al instante los que tienen documentos. Verás nombre del asegurado, datos del vehículo (placa, marca, chasis, motor), número de parte policial, proveedor con su motivo de restricción, y el score calculado.
 
 **Análisis con IA:** haz click en **"Análisis Profundo con Agente IA"** y Gemini va a:
-1. Aplicar las 9 reglas de negocio al caso
+1. Aplicar las 13 reglas de negocio al caso
 2. Buscar narrativas similares en la base de datos
-3. Consultar el historial del asegurado en Supabase
+3. Consultar el historial del asegurado y los datos del vehículo en Supabase
 4. Revisar el perfil del proveedor
 5. Leer los fraudes ya confirmados por el equipo para calibrar su juicio
 6. Producir su propio score con factores detallados y conclusión ejecutiva
@@ -200,19 +202,20 @@ Desde ahí puedes descargar el reporte en PDF y registrar la decisión final (Fr
 El mismo agente responde preguntas libres sobre el portafolio. Tiene acceso a todas las herramientas, así que puede responder cosas como:
 
 - *"¿Qué proveedores concentran más alertas?"* → consulta todos los proveedores ordenados por riesgo
+- *"¿Qué ciudades concentran más alertas?"* → agrupa el portafolio por sucursal
 - *"¿Cuáles son los 10 casos más urgentes para revisar hoy?"* → trae los de mayor score
+- *"¿Qué documentos faltan en los casos críticos?"* → revisa la documentación incompleta
 - *"¿Cuántos siniestros rojos hay en Vehículos?"* → filtra el portafolio
-- *"Dame un resumen ejecutivo de los fraudes confirmados este mes"*
 
 Los cuatro botones de sugerencias son un buen punto de partida para una demo.
 
 ### Métricas del Modelo
 
-Muestra el rendimiento del Random Forest: precisión, recall, F1 y AUC-ROC, junto con la importancia de cada feature. Con los 500 siniestros de ejemplo deberías ver métricas entre 85-95%.
+Muestra el rendimiento del Random Forest: precisión, recall, F1 y AUC-ROC, junto con la importancia de cada feature.
 
 ### Registrar Siniestro
 
-Formulario para ingresar un siniestro nuevo y ver el análisis en tiempo real. Útil para demostrar el sistema con un caso inventado en el momento. El agente calcula el score y Gemini genera la conclusión.
+Formulario para ingresar un siniestro nuevo y ver el análisis en tiempo real. Útil para demostrar el sistema con un caso inventado en el momento. El agente calcula el score y Gemini genera la conclusión. Puedes **adjuntar PDFs de respaldo** (factura, parte policial, fotografías) que se suben a Supabase Storage; al guardar, el siniestro recibe un **ID correlativo** (SIN-0501...) y aparece en el dashboard con su 📎 y sus documentos listos para analizar.
 
 ---
 
@@ -241,9 +244,12 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 │   │   └── fraud_model.py    → Pipeline ML batch: TF-IDF NLP, Random Forest, Isolation Forest.
 │   │                            Genera el score_ml para los 500 siniestros del portafolio.
 │   │
+│   ├── ingestion/
+│   │   └── load_data.py      → Lee el Excel real, genera vehículos, sube tablas + PDFs a Supabase.
+│   │
 │   ├── rules/
-│   │   └── fraud_rules.py    → Motor de reglas: 9 reglas antifraude codificadas por expertos
-│   │                            (RF-01 a RF-09). También las usa el agente como tool.
+│   │   └── fraud_rules.py    → Motor de reglas: 13 reglas antifraude codificadas por expertos
+│   │                            (RF-01 a RF-13). También las usa el agente como tool.
 │   │
 │   ├── explainability/
 │   │   └── explain_score.py  → Genera explicaciones legibles del score ML para el analista.
@@ -270,8 +276,11 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 ├── tests/
 │   └── test_rules.py         → Tests unitarios del motor de reglas
 │
+├── .streamlit/
+│   └── config.toml           → Tema oscuro fijo de la interfaz
 ├── .env.example              → Plantilla de variables de entorno
 ├── requirements.txt          → Dependencias del proyecto
+├── Dockerfile / docker-compose.yml → Despliegue en contenedor
 └── README.md
 ```
 
@@ -281,10 +290,11 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 
 | Componente | Tecnología |
 |-----------|-----------|
-| Frontend | Streamlit + Plotly |
+| Frontend | Streamlit + Plotly (tema oscuro) |
 | Pipeline ML | scikit-learn — Random Forest, Isolation Forest, TF-IDF |
 | Agente IA | Google Gemini 2.5 Flash con function calling (12 tools) |
 | Base de datos | Supabase (PostgreSQL) via REST API |
+| Almacenamiento | Supabase Storage (bucket de PDFs) |
 | Generación de reportes | fpdf2 |
 | Dataset | Excel real — 500 siniestros Ecuador (`openpyxl`) |
 | Despliegue | Docker + docker-compose |

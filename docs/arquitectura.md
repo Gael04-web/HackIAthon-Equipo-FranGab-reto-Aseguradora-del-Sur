@@ -25,26 +25,30 @@ Fraudia Claims es una plataforma antifraude para Aseguradora del Sur. Combina un
 │  Random Forest    │            │  ├─ apply_business_rules            │
 │  Isolation Forest │            │  ├─ search_similar_claims           │
 │  Motor de Reglas  │            │  ├─ get_confirmed_fraud_cases       │
-│                   │            │  ├─ get_insured_history             │
-│  → score_ml       │            │  ├─ get_provider_risk               │
-│  → nivel_riesgo   │            │  ├─ get_all_providers_risk          │
-│  (batch, 500 sin) │            │  ├─ get_top_critical_claims         │
-└────────┬──────────┘            │  ├─ get_claims_by_filter            │
+│   (RF-01 a RF-13) │            │  ├─ get_insured_history             │
+│                   │            │  ├─ get_provider_risk               │
+│  → score_ml       │            │  ├─ get_all_providers_risk          │
+│  → nivel_riesgo   │            │  ├─ get_top_critical_claims         │
+│  (batch, 500 sin) │            │  ├─ get_claims_by_filter            │
+└────────┬──────────┘            │  ├─ get_vehicle_info                │
+         │                       │  ├─ get_alerts_by_city              │
+         │                       │  ├─ get_missing_documents           │
          │                       │  └─ get_portfolio_stats             │
          │                       │                                     │
          │                       │  → score_gemini (0-100)             │
-         │                       │  → factores detectados              │
-         │                       │  → conclusión ejecutiva             │
+         │                       │  → factores + conclusión            │
+         │                       │  + análisis de PDFs (Gemini Vision) │
          └────────────┬──────────┘                                     │
                       │          └─────────────────┬───────────────────┘
                       │                            │ consultas en tiempo real
                       ▼                            ▼
            ┌──────────────────────────────────────────┐
            │              CAPA DE DATOS               │
-           │     Supabase (PostgreSQL en nube)        │
+           │  Supabase (PostgreSQL + Storage)         │
            │                                          │
            │  asegurados │ polizas │ proveedores      │
-           │  siniestros │ documentos                 │
+           │  siniestros │ vehiculos │ documentos     │
+           │  Storage: bucket siniestros-docs (PDFs)  │
            │  (decision_analista → retroalimenta IA)  │
            └──────────────────────────────────────────┘
                               ▲
