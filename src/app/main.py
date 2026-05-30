@@ -269,6 +269,30 @@ def get_siniestros_con_pdf() -> set:
         return set()
 
 
+def siguiente_id_siniestro() -> str:
+    """Genera el siguiente ID correlativo SIN-XXXX consultando el máximo existente."""
+    if not _sb_configured():
+        return f"SIN-{uuid.uuid4().hex[:6].upper()}"
+    try:
+        r = requests.get(
+            _sb_url("siniestros", "select=id_siniestro&limit=10000"),
+            headers=_sb_headers(), timeout=10,
+        )
+        r.raise_for_status()
+        nums = []
+        for d in r.json():
+            sid = str(d.get("id_siniestro", ""))
+            if sid.startswith("SIN-"):
+                try:
+                    nums.append(int(sid.split("-")[1]))
+                except (ValueError, IndexError):
+                    pass
+        siguiente = (max(nums) + 1) if nums else 1
+        return f"SIN-{siguiente:04d}"
+    except Exception:
+        return f"SIN-{uuid.uuid4().hex[:6].upper()}"
+
+
 # ---------------------------------------------------------------------------
 # Data loading & model — cache separado para no reentrenar en decisiones
 # ---------------------------------------------------------------------------
@@ -906,6 +930,14 @@ elif page == "✍️ Registrar Siniestro":
                                     help="La IA buscará similitudes con historias de fraude conocidas.")
         beneficiario = st.text_input("👨‍👩‍👧 Beneficiario", help="Persona o entidad que recibirá el pago.")
 
+        st.subheader("📎 Documentos de Respaldo")
+        archivos_pdf = st.file_uploader(
+            "Adjunta los documentos del siniestro (factura, parte policial, declaración, fotografías...)",
+            type=["pdf"],
+            accept_multiple_files=True,
+            help="Los PDFs se guardarán en el sistema y la IA podrá analizarlos para detectar inconsistencias.",
+        )
+
         submitted = st.form_submit_button("📊 Calcular Score de Riesgo", use_container_width=True)
 
     # Al enviar el formulario calculamos todo y lo guardamos en session_state
@@ -980,6 +1012,8 @@ elif page == "✍️ Registrar Siniestro":
             'descripcion':      descripcion,
             'beneficiario':     beneficiario,
             'docs_completos':   docs_completos,
+            # Guardar bytes de los PDFs adjuntos (persisten en session_state)
+            'archivos_pdf':     [(f.name, f.getvalue()) for f in archivos_pdf] if archivos_pdf else [],
         }
 
     # Mostrar resultado (fuera del bloque if submitted → sobrevive el rerun del botón Guardar)
@@ -1023,10 +1057,18 @@ elif page == "✍️ Registrar Siniestro":
         )
 
         st.markdown("---")
+
+        # Mostrar los documentos adjuntos
+        adjuntos = r.get('archivos_pdf', [])
+        if adjuntos:
+            st.markdown("**📎 Documentos adjuntos:**")
+            for nombre, _ in adjuntos:
+                st.markdown(f"- {nombre}")
+
         if _sb_configured():
             if st.button("💾 Guardar siniestro en Supabase"):
                 try:
-                    nuevo_id = str(uuid.uuid4())
+                    nuevo_id = siguiente_id_siniestro()
                     nuevo_registro = {
                         "id_siniestro":                   nuevo_id,
                         "ramo":                           r['ramo'],
@@ -1052,9 +1094,43 @@ elif page == "✍️ Registrar Siniestro":
                         timeout=15,
                     )
                     resp.raise_for_status()
-                    st.success(f"✅ Siniestro guardado con ID: `{nuevo_id[:8]}...`")
+
+                    # Subir los PDFs adjuntos a Storage + registrar en documentos
+                    n_subidos = 0
+                    if adjuntos:
+                        bucket = "siniestros-docs"
+                        for i, (nombre_orig, contenido) in enumerate(adjuntos):
+                            safe_name = f"{nuevo_id}_{nombre_orig}".replace(" ", "_")
+                            up = requests.post(
+                                os.getenv("SUPABASE_URL").rstrip("/") + f"/storage/v1/object/{bucket}/{safe_name}",
+                                data=contenido,
+                                headers={**_sb_headers(), "Content-Type": "application/pdf", "x-upsert": "true"},
+                                timeout=30,
+                            )
+                            if up.ok:
+                                url_pub = os.getenv("SUPABASE_URL").rstrip("/") + f"/storage/v1/object/public/{bucket}/{safe_name}"
+                                doc_reg = {
+                                    "id_documento":   f"DOC-{nuevo_id}-{i+1}",
+                                    "id_siniestro":   nuevo_id,
+                                    "tipo_documento": "Documento adjunto",
+                                    "nombre_archivo": nombre_orig,
+                                    "url_pdf":        url_pub,
+                                }
+                                requests.post(
+                                    _sb_url("documentos"),
+                                    data=json.dumps(doc_reg),
+                                    headers={**_sb_headers(), "Prefer": "return=minimal"},
+                                    timeout=15,
+                                )
+                                n_subidos += 1
+
+                    msg = f"✅ Siniestro guardado con ID: `{nuevo_id}`"
+                    if adjuntos:
+                        msg += f"  ·  {n_subidos}/{len(adjuntos)} documento(s) subido(s)"
+                    st.success(msg)
                     del st.session_state['registrar_result']
                     load_data.clear()
+                    get_siniestros_con_pdf.clear()
                 except Exception as e:
                     st.error(f"Error al guardar en Supabase: {e}")
         else:
