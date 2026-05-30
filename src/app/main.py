@@ -17,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 from src.models.fraud_model import FraudModelPipeline
 from src.ai_agent.claims_agent import ClaimsAgent
 from src.rules.fraud_rules import calculate_rule_score
+from src.utils.pdf_utils import get_docs_for_siniestro, render_pdf_iframe, get_pdf_bytes, analyze_pdf_with_gemini
 
 load_dotenv()
 
@@ -388,6 +389,87 @@ elif page == "Detalle de Siniestro":
                 file_name=f"Reporte_Siniestro_{selected_id[:8]}.pdf",
                 mime="application/pdf"
             )
+
+        # ----------------------------------------------------------------
+        # DOCUMENTOS PDF DEL SINIESTRO
+        # ----------------------------------------------------------------
+        # Consultar documentos desde Supabase (con url_pdf)
+        @st.cache_data(ttl=300)
+        def fetch_docs_supabase(id_sin: str):
+            if not _sb_configured():
+                return []
+            try:
+                r = requests.get(
+                    _sb_url("documentos", f"id_siniestro=eq.{id_sin}&select=*"),
+                    headers=_sb_headers(), timeout=10,
+                )
+                r.raise_for_status()
+                return r.json()
+            except Exception:
+                return []
+
+        sb_docs  = fetch_docs_supabase(selected_id)
+        docs_pdf = get_docs_for_siniestro(selected_id, sb_docs=sb_docs)
+
+        if docs_pdf:
+            st.markdown("---")
+            st.subheader("📁 Documentos del Siniestro")
+            fuente = "☁️ Supabase Storage" if sb_docs else "💾 Archivo local"
+            st.caption(f"{len(docs_pdf)} documento(s) · Fuente: {fuente}")
+
+            datos_doc = {
+                "id_siniestro":          selected_id,
+                "ramo":                  row.get("ramo"),
+                "cobertura":             row.get("cobertura"),
+                "fecha_ocurrencia":      row.get("fecha_ocurrencia"),
+                "fecha_reporte":         row.get("fecha_reporte"),
+                "monto_reclamado":       row.get("monto_reclamado", 0),
+                "monto_estimado":        row.get("monto_estimado", 0),
+                "placa_vehiculo":        row.get("placa_vehiculo", ""),
+                "numero_parte_policial": row.get("numero_parte_policial", ""),
+                "nombre_proveedor":      row.get("nombre_proveedor", ""),
+                "descripcion":           row.get("descripcion", ""),
+            }
+
+            for doc in docs_pdf:
+                with st.expander(f"{doc['tipo']}  —  {doc['nombre']}"):
+                    tab_ver, tab_ia = st.tabs(["👁️ Ver documento", "🤖 Analizar con IA"])
+
+                    with tab_ver:
+                        st.markdown(
+                            render_pdf_iframe(doc, height=620),
+                            unsafe_allow_html=True,
+                        )
+                        try:
+                            pdf_bytes_dl = get_pdf_bytes(doc)
+                            st.download_button(
+                                label="⬇️ Descargar PDF",
+                                data=pdf_bytes_dl,
+                                file_name=doc["nombre"],
+                                mime="application/pdf",
+                                key=f"dl_{doc['nombre']}",
+                            )
+                        except Exception:
+                            pass
+
+                    with tab_ia:
+                        key_analisis = f"doc_analysis_{selected_id}_{doc['nombre']}"
+                        if st.button(
+                            "🔍 Analizar inconsistencias con Gemini",
+                            key=f"btn_{doc['nombre']}",
+                        ):
+                            with st.spinner("Gemini está leyendo el documento y comparando con los datos registrados..."):
+                                if "agent" not in st.session_state:
+                                    st.session_state.agent = ClaimsAgent(df, get_supabase_client())
+                                resultado = analyze_pdf_with_gemini(
+                                    doc,
+                                    datos_doc,
+                                    st.session_state.agent.model,
+                                )
+                                st.session_state[key_analisis] = resultado
+
+                        if key_analisis in st.session_state:
+                            st.markdown(st.session_state[key_analisis])
 
         st.markdown("---")
         st.subheader("👨‍⚖️ Decisión del Analista")

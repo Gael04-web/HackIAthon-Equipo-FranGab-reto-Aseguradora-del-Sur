@@ -73,5 +73,6 @@ CREATE TABLE documentos (
     id_documento    TEXT PRIMARY KEY,
     id_siniestro    TEXT REFERENCES siniestros(id_siniestro),
     tipo_documento  TEXT,
-    nombre_archivo  TEXT
+    nombre_archivo  TEXT,
+    url_pdf         TEXT    -- URL pública en Supabase Storage (bucket: siniestros-docs)
 );

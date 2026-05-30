@@ -151,7 +151,78 @@ def transform_documentos(df: pd.DataFrame) -> pd.DataFrame:
         'Nombre Archivo PDF': 'nombre_archivo',
     })
     df['nombre_archivo'] = df['nombre_archivo'].fillna('')
+    df['url_pdf']        = None  # se rellena después de subir a Storage
+    # Reemplazar todos los NaN/NaT restantes por None para JSON válido
+    df = df.where(pd.notna(df), other=None)
     return df
+
+
+# ---------------------------------------------------------------------------
+# Supabase Storage — subida de PDFs
+# ---------------------------------------------------------------------------
+
+DOCS_FOLDER = os.path.join(_BASE, "data", "docs")
+STORAGE_BUCKET = "siniestros-docs"
+
+
+def upload_pdfs_to_storage(df_docs: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sube todos los PDFs de data/docs/ al bucket de Supabase Storage
+    y actualiza el DataFrame de documentos con la url_pdf pública.
+    """
+    if not os.path.exists(DOCS_FOLDER):
+        print("  Carpeta data/docs/ no encontrada. Saltando subida de PDFs.")
+        return df_docs
+
+    storage_url = SUPABASE_URL.rstrip('/') + f"/storage/v1/object/{STORAGE_BUCKET}/"
+    headers_storage = {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "x-upsert":      "true",
+    }
+
+    import glob
+    pdfs = glob.glob(os.path.join(DOCS_FOLDER, "*.pdf"))
+    print(f"  Subiendo {len(pdfs)} PDFs a Supabase Storage (bucket: {STORAGE_BUCKET})...")
+
+    url_map = {}  # filename → public URL
+    for pdf_path in pdfs:
+        filename = os.path.basename(pdf_path)
+        try:
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+            resp = requests.post(
+                storage_url + filename,
+                data=pdf_bytes,
+                headers={**headers_storage, "Content-Type": "application/pdf"},
+                timeout=30,
+            )
+            if resp.ok:
+                public_url = (
+                    SUPABASE_URL.rstrip('/') +
+                    f"/storage/v1/object/public/{STORAGE_BUCKET}/{filename}"
+                )
+                url_map[filename] = public_url
+            else:
+                print(f"    ⚠️  {filename}: {resp.status_code} {resp.text[:100]}")
+        except Exception as e:
+            print(f"    ⚠️  Error subiendo {filename}: {e}")
+
+    print(f"  PDFs subidos: {len(url_map)}/{len(pdfs)}")
+
+    # Mapear url_pdf a cada documento según nombre_archivo
+    def find_url(nombre_archivo):
+        if not nombre_archivo:
+            return None
+        # Buscar coincidencia directa o parcial
+        for fname, url in url_map.items():
+            if nombre_archivo in fname or fname in nombre_archivo:
+                return url
+        return None
+
+    df_docs = df_docs.copy()
+    df_docs['url_pdf'] = df_docs['nombre_archivo'].apply(find_url)
+    return df_docs
 
 
 # ---------------------------------------------------------------------------
@@ -168,18 +239,33 @@ def upload_to_supabase(data_dict: dict):
         "Prefer":        "return=minimal",
     }
 
-    print("Conectado a Supabase. Subiendo datos...")
+    print("Conectado a Supabase. Subiendo datos (upsert)...")
     order      = ['asegurados', 'polizas', 'proveedores', 'siniestros', 'documentos']
     chunk_size = 100
 
+    # Usar upsert para no fallar si los datos ya existen
+    headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+
+    def _clean(val):
+        """Convierte NaN/NaT/inf a None para JSON válido."""
+        import math
+        if val is None:
+            return None
+        if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+            return None
+        return val
+
+    def _clean_records(records):
+        return [{k: _clean(v) for k, v in r.items()} for r in records]
+
     for table in order:
-        records = data_dict[table]
-        print(f"  Insertando {len(records)} registros en '{table}'...")
+        records = _clean_records(data_dict[table])
+        print(f"  Upsert {len(records)} registros en '{table}'...")
         for i in range(0, len(records), chunk_size):
             chunk = records[i:i + chunk_size]
             resp  = requests.post(
                 base_url + table,
-                data=json.dumps(chunk, default=str),
+                data=json.dumps(chunk),
                 headers=headers,
                 timeout=30,
             )
@@ -224,6 +310,9 @@ if __name__ == "__main__":
     save_csv(df_sin)
 
     if SUPABASE_URL and SUPABASE_KEY and "your_" not in SUPABASE_KEY:
+        # Subir PDFs a Supabase Storage y obtener URLs
+        df_docs = upload_pdfs_to_storage(df_docs)
+
         upload_to_supabase({
             'asegurados': df_aseg.to_dict('records'),
             'polizas':    df_pol.to_dict('records'),

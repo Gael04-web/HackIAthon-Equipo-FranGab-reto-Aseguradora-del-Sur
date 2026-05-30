@@ -137,6 +137,20 @@ Score ML (pipeline)   Score Gemini (agente)   Nivel según Gemini
 
 El mismo agente con las mismas tools responde preguntas libres del analista sobre el portafolio completo. Mantiene historial de conversación dentro de la sesión.
 
+### Modo Análisis de Documentos PDF
+
+**Archivo:** `src/utils/pdf_utils.py → analyze_pdf_with_gemini()`
+
+Gemini puede leer los PDFs reales del dataset (facturas, partes policiales, declaraciones de accidente) y detectar inconsistencias comparando el contenido del documento con los datos registrados en Supabase.
+
+| Tipo de documento | Qué verifica Gemini |
+|-------------------|-------------------|
+| 🧾 Factura | Monto total vs monto_reclamado · Fecha vs fecha_ocurrencia · Nombre del taller vs proveedor registrado |
+| 🚔 Parte Policial | Número de parte vs numero_parte_policial · Fecha de denuncia vs fecha_ocurrencia · Consistencia de la descripción |
+| 📋 Declaración de Accidente | Placa del vehículo vs placa_vehiculo · Fecha del accidente · Coherencia con la cobertura |
+
+Los PDFs se sirven directamente desde **Supabase Storage** (bucket `siniestros-docs`). Si Supabase no está disponible, la app usa los archivos locales de `data/docs/` como fallback.
+
 ---
 
 ## Conducta del agente

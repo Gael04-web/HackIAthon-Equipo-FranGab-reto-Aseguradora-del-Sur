@@ -89,23 +89,32 @@ Proyecto en [supabase.com](https://supabase.com) → *Project Settings* → *API
 **¿Dónde está la API Key de Gemini?**
 Entra a [aistudio.google.com](https://aistudio.google.com) → *Get API Key* → crea una nueva (es gratis).
 
-### 4. Colocar el dataset
+### 4. Colocar el dataset y los documentos PDF
 
 Copia el archivo Excel del dataset en la carpeta del proyecto:
 
 ```
 data/
-└── dataset/
-    └── Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx   ← aquí
+├── dataset/
+│   └── Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx   ← aquí
+└── docs/
+    ├── DA_SIN-0378_DOC-0952.pdf                        ← PDFs del dataset
+    ├── Muestras_Facturas_Siniestros-SIN-0001.pdf
+    └── PP_SIN-0005_DOC-0012.pdf
+    └── ... (26 PDFs en total)
 ```
+
+Los PDFs se subirán automáticamente a Supabase Storage cuando corras el script de carga.
 
 ---
 
-## Configurar la base de datos
+## Configurar la base de datos y Storage
 
-En el **SQL Editor** de tu proyecto Supabase, ejecuta el contenido de `docs/schema.sql`. Eso crea las 5 tablas: `asegurados`, `polizas`, `proveedores`, `siniestros` y `documentos`.
+### Tablas (SQL Editor de Supabase)
 
-Si ya tenías datos de una versión anterior y quieres empezar limpio:
+Ejecuta el contenido de `docs/schema.sql`. Eso crea las 5 tablas: `asegurados`, `polizas`, `proveedores`, `siniestros` y `documentos`.
+
+Si ya tenías datos anteriores y quieres empezar limpio:
 
 ```sql
 DROP TABLE IF EXISTS documentos, siniestros, polizas, proveedores, asegurados CASCADE;
@@ -113,19 +122,30 @@ DROP TABLE IF EXISTS documentos, siniestros, polizas, proveedores, asegurados CA
 
 Luego vuelve a ejecutar el schema.
 
+### Bucket de Storage (para los PDFs)
+
+En tu proyecto Supabase → **Storage** → **New bucket**:
+- Nombre: `siniestros-docs`
+- Activar **Public bucket** ✅
+
+Esto permite que la app sirva los PDFs directamente desde Supabase sin necesitar los archivos locales.
+
 ---
 
 ## Cargar los datos reales a Supabase
 
-El dataset real está en `data/dataset/Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx`. Este archivo contiene 500 siniestros, 174 asegurados, 33 proveedores y 1.263 documentos con datos reales de Ecuador.
+El dataset contiene 500 siniestros, 174 asegurados, 33 proveedores, 1.263 documentos y 26 PDFs reales de Ecuador (facturas, partes policiales y declaraciones de accidente).
 
-Corre este script **una sola vez** para subir todo a Supabase:
+Corre este script **una sola vez** para subir todo:
 
 ```bash
 python src/ingestion/load_data.py
 ```
 
-También guarda un CSV local en `data/synthetic/siniestros.csv` que la app usa como fallback si Supabase no está disponible.
+El script hace tres cosas:
+1. Sube las 5 tablas de datos a Supabase (upsert — no falla si ya existen)
+2. Sube los 26 PDFs al bucket `siniestros-docs` de Supabase Storage
+3. Guarda un CSV local en `data/synthetic/siniestros.csv` como fallback
 
 ---
 
@@ -157,19 +177,23 @@ Muestra el resumen del portafolio completo: KPIs de riesgo, estado de las revisi
 
 ### Detalle de Siniestro
 
-Selecciona cualquier siniestro del dropdown (ordenados de mayor a menor score ML). Verás los datos del caso y el score calculado por el pipeline.
+Selecciona cualquier siniestro del dropdown (ordenados de mayor a menor score ML). Verás nombre del asegurado, placa del vehículo, número de parte policial, proveedor con su motivo de restricción si aplica, y el score calculado.
 
-Haz click en **"Análisis Profundo con Agente IA"** para activar el agente. Gemini va a:
-1. Aplicar las reglas de negocio al caso
+**Análisis con IA:** haz click en **"Análisis Profundo con Agente IA"** y Gemini va a:
+1. Aplicar las 9 reglas de negocio al caso
 2. Buscar narrativas similares en la base de datos
 3. Consultar el historial del asegurado en Supabase
 4. Revisar el perfil del proveedor
-5. Leer los fraudes ya confirmados por el equipo para comparar patrones
-6. Producir su propio score con factores y conclusión ejecutiva
+5. Leer los fraudes ya confirmados por el equipo para calibrar su juicio
+6. Producir su propio score con factores detallados y conclusión ejecutiva
 
-La UI muestra los dos scores lado a lado para que el analista pueda comparar. Si divergen mucho, significa que el agente encontró algo en la BD que el modelo estadístico no ponderó igual.
+La UI muestra los dos scores lado a lado (Score ML vs Score Gemini). Si divergen, el agente encontró algo que el modelo estadístico no ponderó igual.
 
-Desde ahí puedes descargar el reporte en PDF y registrar la decisión final (Fraude / Investigación / Legítimo). Esa decisión se guarda en Supabase y automáticamente enriquece el conocimiento del agente para futuros análisis.
+**Documentos PDF:** si el siniestro tiene documentos adjuntos (facturas, partes policiales o declaraciones de accidente), aparece una sección **📁 Documentos del Siniestro** con dos opciones por cada archivo:
+- **👁️ Ver documento** — muestra el PDF embebido directamente desde Supabase Storage
+- **🤖 Analizar con IA** — Gemini lee el PDF y lo compara con los datos registrados buscando inconsistencias: montos en factura vs monto reclamado, fechas en el parte policial vs fecha de ocurrencia, placa en la declaración vs la registrada
+
+Desde ahí puedes descargar el reporte en PDF y registrar la decisión final (Fraude / Investigación / Legítimo).
 
 ### Inspector FRAUDIA (chat)
 
@@ -221,12 +245,17 @@ Todo el código fuente vive dentro de la carpeta `src/`. Ahí es donde está el 
 │   │   └── fraud_rules.py    → Motor de reglas: 9 reglas antifraude codificadas por expertos
 │   │                            (RF-01 a RF-09). También las usa el agente como tool.
 │   │
-│   └── explainability/
-│       └── explain_score.py  → Genera explicaciones legibles del score ML para el analista.
+│   ├── explainability/
+│   │   └── explain_score.py  → Genera explicaciones legibles del score ML para el analista.
+│   │
+│   └── utils/
+│       └── pdf_utils.py      → Visor de PDFs (Supabase Storage o local) y análisis con Gemini.
 │
 ├── data/
 │   ├── dataset/
-│   │   └── Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx  → Dataset real (agregar manualmente)
+│   │   └── Evento_Datasets_Sinteticos_Fraude_500_v2.xlsx  → Dataset real (agregar manualmente, no versionado)
+│   ├── docs/
+│   │   └── *.pdf             → PDFs locales como fallback (no versionados, se sirven desde Supabase Storage)
 │   └── synthetic/
 │       └── siniestros.csv    → CSV generado automáticamente como fallback local.
 │
