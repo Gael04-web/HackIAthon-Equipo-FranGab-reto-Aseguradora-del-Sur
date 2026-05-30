@@ -253,6 +253,22 @@ def clean_val(v, default="—"):
     return s
 
 
+@st.cache_data(ttl=300)
+def get_siniestros_con_pdf() -> set:
+    """Retorna el set de id_siniestro que tienen al menos un PDF en Storage."""
+    if not _sb_configured():
+        return set()
+    try:
+        r = requests.get(
+            _sb_url("documentos", "select=id_siniestro&url_pdf=not.is.null"),
+            headers=_sb_headers(), timeout=10,
+        )
+        r.raise_for_status()
+        return {d["id_siniestro"] for d in r.json() if d.get("id_siniestro")}
+    except Exception:
+        return set()
+
+
 # ---------------------------------------------------------------------------
 # Data loading & model — cache separado para no reentrenar en decisiones
 # ---------------------------------------------------------------------------
@@ -474,8 +490,34 @@ if page == "Dashboard Principal":
 elif page == "Detalle de Siniestro":
     st.title("🔍 Detalle de Siniestro")
 
-    siniestros_list = df.sort_values('score_final', ascending=False)['id_siniestro'].tolist()
-    selected_id = st.selectbox("Seleccione un Siniestro a evaluar:", siniestros_list)
+    ids_con_pdf = get_siniestros_con_pdf()
+
+    sel_col, chk_col = st.columns([4, 1])
+    with chk_col:
+        st.write("")  # espaciador para alinear
+        solo_pdf = st.checkbox("📎 Solo con PDF", value=False,
+                               help=f"Mostrar únicamente los {len(ids_con_pdf)} siniestros con documentos adjuntos")
+
+    base_df = df.sort_values('score_final', ascending=False)
+    if solo_pdf and ids_con_pdf:
+        base_df = base_df[base_df['id_siniestro'].isin(ids_con_pdf)]
+    siniestros_list = base_df['id_siniestro'].tolist()
+
+    def _fmt_siniestro(sid):
+        marca = "📎 " if sid in ids_con_pdf else ""
+        fila = df[df['id_siniestro'] == sid]
+        if not fila.empty:
+            nivel = fila.iloc[0].get('nivel_riesgo', '')
+            emoji = {"Rojo": "🔴", "Amarillo": "🟡", "Verde": "🟢"}.get(nivel, "")
+            return f"{marca}{emoji} {sid}"
+        return f"{marca}{sid}"
+
+    with sel_col:
+        selected_id = st.selectbox(
+            "Seleccione un Siniestro a evaluar:",
+            siniestros_list,
+            format_func=_fmt_siniestro,
+        )
 
     if selected_id:
         row = df[df['id_siniestro'] == selected_id].iloc[0]
