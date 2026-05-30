@@ -86,6 +86,7 @@ def search_similar_claims(description: str, top_k: int = 5) -> list:
     y nivel_riesgo de cada caso similar encontrado.
     """
     global _df
+    top_k = int(top_k)
     if _df.empty or "descripcion" not in _df.columns:
         return []
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -120,7 +121,7 @@ def get_confirmed_fraud_cases(limit: int = 15) -> list:
     tu score. Retorna los campos clave de cada caso confirmado.
     """
     global _df
-    limit = min(limit, 20)
+    limit = min(int(limit), 20)
     data = _sb_get(
         "siniestros",
         select="id_siniestro,ramo,cobertura,monto_reclamado,dias_desde_inicio_poliza,dias_desde_fin_poliza,dias_entre_ocurrencia_reporte,historial_siniestros_asegurado,documentos_completos,descripcion",
@@ -192,6 +193,7 @@ def get_top_critical_claims(limit: int = 10) -> list:
     y decisión actual del analista.
     """
     global _df
+    limit = int(limit)
     if not _df.empty:
         cols  = ["id_siniestro", "ramo", "cobertura", "monto_reclamado",
                  "score_final", "nivel_riesgo", "decision_analista"]
@@ -243,25 +245,10 @@ def get_claims_by_filter(
     Úsala para responder preguntas como '¿cuántos casos rojos hay en Salud?'
     o '¿qué casos están pendientes de revisión?'.
     """
-    global _df, _sb
-    if _sb:
-        try:
-            query = _sb.table("siniestros").select(
-                "id_siniestro,ramo,cobertura,monto_reclamado,estado,decision_analista,fecha_ocurrencia"
-            )
-            if decision_analista:
-                query = query.eq("decision_analista", decision_analista)
-            if ramo:
-                query = query.eq("ramo", ramo)
-            data = query.limit(limit).execute().data
-            if nivel_riesgo and _df is not None and "nivel_riesgo" in _df.columns:
-                ids_filtrados = set(_df[_df["nivel_riesgo"] == nivel_riesgo]["id_siniestro"].tolist())
-                data = [d for d in data if d.get("id_siniestro") in ids_filtrados]
-            return data
-        except Exception:
-            pass
+    global _df
+    limit = int(limit)
     if not _df.empty:
-        mask = pd.Series([True] * len(_df))
+        mask = pd.Series([True] * len(_df), index=_df.index)
         if nivel_riesgo and "nivel_riesgo" in _df.columns:
             mask &= _df["nivel_riesgo"] == nivel_riesgo
         if ramo and "ramo" in _df.columns:
