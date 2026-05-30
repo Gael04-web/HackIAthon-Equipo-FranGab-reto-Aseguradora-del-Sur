@@ -76,7 +76,7 @@ Este documento declara de forma transparente las limitaciones del prototipo, sus
 
 ---
 
-## 9. Cumplimiento ético (sección 17 del reto)
+## 9. Cumplimiento ético y de seguridad (sección 17 del reto)
 
 - ✅ No se usan datos personales reales.
 - ✅ No se exponen credenciales (`.env` ignorado por git, `.env.example` como plantilla).
@@ -84,6 +84,9 @@ Este documento declara de forma transparente las limitaciones del prototipo, sus
 - ✅ El resultado se comunica siempre como "posible irregularidad" / "requiere revisión".
 - ✅ Revisión humana obligatoria antes de cualquier decisión.
 - ✅ Limitaciones y falsos positivos documentados (este archivo).
+- ✅ **Row Level Security (RLS) habilitado** en Supabase con políticas explícitas para el rol `anon` (lectura del portafolio, registro de siniestros y decisiones). La seguridad de la base de datos queda activa, no desactivada.
+
+**Nota de seguridad para producción:** la app usa la `anon public key` con políticas que permiten lectura pública del portafolio (apropiado para un prototipo con datos sintéticos). En producción se recomienda separar roles: `service_role` para la ingesta, y políticas RLS más restrictivas por usuario/rol para el frontend, además de un bucket de Storage privado con URLs firmadas.
 
 ---
 

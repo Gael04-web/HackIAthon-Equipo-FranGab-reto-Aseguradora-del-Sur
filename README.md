@@ -112,14 +112,14 @@ Los PDFs se subirán automáticamente a Supabase Storage cuando corras el script
 
 ## Configurar la base de datos y Storage
 
-### Tablas (SQL Editor de Supabase)
+### Tablas + Seguridad (SQL Editor de Supabase)
 
-Ejecuta el contenido de `docs/schema.sql`. Eso crea las 5 tablas: `asegurados`, `polizas`, `proveedores`, `siniestros` y `documentos`.
+Ejecuta el contenido completo de `docs/schema.sql`. Crea las 6 tablas (`asegurados`, `polizas`, `proveedores`, `siniestros`, `vehiculos`, `documentos`) y configura la **seguridad**.
 
 Si ya tenías datos anteriores y quieres empezar limpio:
 
 ```sql
-DROP TABLE IF EXISTS documentos, siniestros, polizas, proveedores, asegurados CASCADE;
+DROP TABLE IF EXISTS documentos, vehiculos, siniestros, polizas, proveedores, asegurados CASCADE;
 ```
 
 Luego vuelve a ejecutar el schema.
@@ -130,7 +130,16 @@ En tu proyecto Supabase → **Storage** → **New bucket**:
 - Nombre: `siniestros-docs`
 - Activar **Public bucket** ✅
 
-Esto permite que la app sirva los PDFs directamente desde Supabase sin necesitar los archivos locales.
+### Seguridad: Row Level Security (RLS)
+
+La app usa la **anon public key**. El `schema.sql` incluye al final un bloque que **habilita RLS y crea las políticas** necesarias:
+
+- **Lectura pública** de las tablas (la app consulta el portafolio)
+- **Inserción** para la ingesta de datos y registrar siniestros nuevos
+- **Actualización** de `siniestros` para guardar la decisión del analista
+- **Subida de PDFs** al bucket de Storage
+
+> ⚠️ **Importante:** si RLS queda habilitado **sin** estas políticas, el anon key no puede leer nada y la app caerá silenciosamente al CSV local (verás los IDs de proveedor en vez de los nombres, y 0 documentos). Ejecutar el bloque de políticas del `schema.sql` resuelve esto **manteniendo la seguridad activa** — no es necesario desactivar RLS.
 
 ---
 

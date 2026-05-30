@@ -90,3 +90,46 @@ CREATE TABLE documentos (
     nombre_archivo TEXT,
     url_pdf        TEXT    -- URL pública en Supabase Storage (bucket: siniestros-docs)
 );
+
+
+-- ===========================================================================
+-- Seguridad: Row Level Security (RLS) + políticas para el rol anon
+-- ---------------------------------------------------------------------------
+-- La app y el script de carga usan la "anon public key". Con RLS habilitado,
+-- el rol anon NO puede leer ni escribir nada hasta definir políticas. Esto
+-- mantiene la seguridad ACTIVA y concede los permisos que el sistema necesita.
+-- Ejecutar este bloque DESPUÉS de crear las tablas (puede ser antes o después
+-- de cargar los datos: las políticas de INSERT permiten que load_data.py corra).
+-- ===========================================================================
+
+ALTER TABLE asegurados   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE polizas      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE proveedores  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE siniestros   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vehiculos    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documentos   ENABLE ROW LEVEL SECURITY;
+
+-- LECTURA pública (la app consulta el portafolio completo)
+CREATE POLICY "anon read asegurados"  ON asegurados  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon read polizas"     ON polizas     FOR SELECT TO anon USING (true);
+CREATE POLICY "anon read proveedores" ON proveedores FOR SELECT TO anon USING (true);
+CREATE POLICY "anon read siniestros"  ON siniestros  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon read vehiculos"   ON vehiculos   FOR SELECT TO anon USING (true);
+CREATE POLICY "anon read documentos"  ON documentos  FOR SELECT TO anon USING (true);
+
+-- INSERT en todas las tablas (necesario para la ingesta con load_data.py
+-- y para registrar siniestros/documentos desde la app)
+CREATE POLICY "anon insert asegurados"  ON asegurados  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon insert polizas"     ON polizas     FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon insert proveedores" ON proveedores FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon insert siniestros"  ON siniestros  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon insert vehiculos"   ON vehiculos   FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon insert documentos"  ON documentos  FOR INSERT TO anon WITH CHECK (true);
+
+-- UPDATE en siniestros (decisión del analista) y documentos (url_pdf en recarga)
+CREATE POLICY "anon update siniestros" ON siniestros FOR UPDATE TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "anon update documentos" ON documentos FOR UPDATE TO anon USING (true) WITH CHECK (true);
+
+-- Permitir subir/leer PDFs en el bucket de Storage
+CREATE POLICY "anon upload docs" ON storage.objects
+    FOR INSERT TO anon WITH CHECK (bucket_id = 'siniestros-docs');
